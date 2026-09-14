@@ -1,7 +1,9 @@
 export const MACHINE_VERSION = 1;
+export const MIN_BEAM_LENGTH = 0.08;
 
 const clone = (value) => structuredClone(value);
 const finiteVec3 = (value) => Array.isArray(value) && value.length === 3 && value.every(Number.isFinite);
+const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 export function createSeedMachine() {
   return {
@@ -38,8 +40,13 @@ export function validateMachine(document) {
   for (const beam of document.beams) {
     if (!beam?.id || beamIds.has(beam.id)) errors.push(`duplicate or missing beam id: ${beam?.id}`);
     beamIds.add(beam?.id);
-    if (!nodes.has(beam?.a) || !nodes.has(beam?.b)) errors.push(`beam ${beam?.id ?? '?'} references a missing node`);
+    const aNode = nodes.get(beam?.a);
+    const bNode = nodes.get(beam?.b);
+    if (!aNode || !bNode) errors.push(`beam ${beam?.id ?? '?'} references a missing node`);
     if (beam?.a === beam?.b) errors.push(`beam ${beam?.id ?? '?'} cannot connect a node to itself`);
+    if (aNode && bNode && finiteVec3(aNode.position) && finiteVec3(bNode.position) && distance(aNode.position, bNode.position) < MIN_BEAM_LENGTH) {
+      errors.push(`beam ${beam?.id ?? '?'} is shorter than ${MIN_BEAM_LENGTH} m`);
+    }
     if (!(Number.isFinite(beam?.thickness) && beam.thickness > 0)) errors.push(`beam ${beam?.id ?? '?'} has invalid thickness`);
     if (!(Number.isFinite(beam?.density) && beam.density > 0)) errors.push(`beam ${beam?.id ?? '?'} has invalid density`);
     const key = [beam?.a, beam?.b].sort().join('|');
@@ -85,10 +92,7 @@ export function extendFromNode(document, startNodeId, endPosition, targetNodeId 
     next.nodes.push(endNode);
   }
 
-  const dx = endNode.position[0] - start.position[0];
-  const dy = endNode.position[1] - start.position[1];
-  const dz = endNode.position[2] - start.position[2];
-  if (Math.hypot(dx, dy, dz) < 0.08) return document;
+  if (distance(endNode.position, start.position) < MIN_BEAM_LENGTH) return document;
 
   next.beams.push({
     id: `b${next.nextIds.beam++}`,
