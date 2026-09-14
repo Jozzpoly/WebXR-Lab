@@ -1,19 +1,26 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { SpatialToolPanel } from './spatial-panel.js';
 
-export const BUILD_Y = 1.12;
+export const BUILD_Y = 0.45;
+export const WORKSPACE_WORLD_POSITION = [0, 0.72, -1.55];
 
 const beamGeometry = new THREE.BoxGeometry(1, 1, 1);
-const authoredBeamMaterial = new THREE.MeshStandardMaterial({ color: 0x57b6ff, roughness: 0.42, metalness: 0.18 });
-const runtimeBeamMaterial = new THREE.MeshStandardMaterial({ color: 0xffb95f, roughness: 0.5, metalness: 0.12 });
-const wheelGeometry = new THREE.CylinderGeometry(1, 1, 1, 28, 1, false);
+const authoredBeamMaterial = new THREE.MeshStandardMaterial({ color: 0x3d93b5, roughness: 0.32, metalness: 0.46 });
+const runtimeBeamMaterial = new THREE.MeshStandardMaterial({ color: 0x8b9ca8, roughness: 0.4, metalness: 0.36 });
+const wheelGeometry = new THREE.CylinderGeometry(1, 1, 1, 32, 1, false);
+const hubGeometry = new THREE.CylinderGeometry(1, 1, 1, 24, 1, false);
+const axisGeometry = new THREE.CylinderGeometry(1, 1, 1, 12, 1, false);
 const wheelMarkerGeometry = new THREE.SphereGeometry(0.045, 12, 8);
-const authoredWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x57f0aa, roughness: 0.55, metalness: 0.08 });
-const runtimeWheelMaterial = new THREE.MeshStandardMaterial({ color: 0xff8f4d, roughness: 0.63, metalness: 0.08 });
-const wheelMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0xfff19a });
-const nodeGeometry = new THREE.SphereGeometry(0.075, 18, 12);
-const nodeMaterial = new THREE.MeshStandardMaterial({ color: 0xeaf5ff, emissive: 0x123148, emissiveIntensity: 0.65, roughness: 0.28 });
-const ghostMaterial = new THREE.MeshBasicMaterial({ color: 0x8af7c8, transparent: true, opacity: 0.58, depthWrite: false });
+const authoredWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x34586b, roughness: 0.52, metalness: 0.28 });
+const runtimeWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x242c33, roughness: 0.76, metalness: 0.04 });
+const hubMaterial = new THREE.MeshStandardMaterial({ color: 0x9cabb4, roughness: 0.28, metalness: 0.7 });
+const axisMaterial = new THREE.MeshBasicMaterial({ color: 0x62dcff, transparent: true, opacity: 0.9 });
+const wheelMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0xffd45a });
+const motorArrowColor = 0xffb14f;
+const nodeGeometry = new THREE.SphereGeometry(0.068, 18, 12);
+const nodeMaterial = new THREE.MeshStandardMaterial({ color: 0xe8f7ff, emissive: 0x2e91b8, emissiveIntensity: 0.32, roughness: 0.22, metalness: 0.18 });
+const ghostMaterial = new THREE.MeshBasicMaterial({ color: 0x7ef2c2, transparent: true, opacity: 0.62, depthWrite: false });
 
 function fitBeam(mesh, a, b, thickness) {
   const start = new THREE.Vector3(...a);
@@ -25,19 +32,41 @@ function fitBeam(mesh, a, b, thickness) {
   mesh.scale.set(len, thickness, thickness);
 }
 
-function createWheelShape(component, material) {
+function createWheelShape(component, material, showIntent = false) {
   const shape = new THREE.Group();
   shape.quaternion.set(...component.colliderRotation);
 
-  const wheel = new THREE.Mesh(wheelGeometry, material);
-  wheel.scale.set(component.radius, component.width, component.radius);
-  wheel.castShadow = true;
-  wheel.receiveShadow = true;
-  shape.add(wheel);
+  const tire = new THREE.Mesh(wheelGeometry, material);
+  tire.scale.set(component.radius, component.width, component.radius);
+  tire.castShadow = true;
+  tire.receiveShadow = true;
+  shape.add(tire);
+
+  const hub = new THREE.Mesh(hubGeometry, hubMaterial);
+  hub.scale.set(component.radius * 0.34, component.width * 1.16, component.radius * 0.34);
+  hub.castShadow = true;
+  shape.add(hub);
 
   const marker = new THREE.Mesh(wheelMarkerGeometry, wheelMarkerMaterial);
-  marker.position.set(component.radius * 0.66, component.width * 0.56, 0);
+  marker.position.set(component.radius * 0.68, component.width * 0.56, 0);
   shape.add(marker);
+
+  if (showIntent) {
+    const axis = new THREE.Mesh(axisGeometry, axisMaterial);
+    axis.scale.set(0.014, component.width + 0.26, 0.014);
+    shape.add(axis);
+
+    const sign = component.motorVelocity >= 0 ? -1 : 1;
+    const arrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, sign),
+      new THREE.Vector3(component.radius * 0.78, component.width * 0.65, 0),
+      Math.max(0.15, component.radius * 0.72),
+      motorArrowColor,
+      0.07,
+      0.045,
+    );
+    shape.add(arrow);
+  }
   return shape;
 }
 
@@ -46,53 +75,70 @@ export class RiftworksScene {
     this.container = container;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x071019);
-    this.scene.fog = new THREE.Fog(0x071019, 8, 18);
+    this.scene.fog = new THREE.Fog(0x071019, 9, 20);
 
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.03, 50);
-    this.camera.position.set(3.2, 2.55, 3.4);
+    this.camera.position.set(3.15, 2.55, 3.25);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.xr.enabled = true;
     container.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.target.set(0, 0.9, -1.45);
+    this.controls.target.set(0, 1.12, -1.55);
     this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
     this.controls.mouseButtons.LEFT = null;
     this.controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     this.controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
-    this.controls.minDistance = 1.4;
-    this.controls.maxDistance = 10;
+    this.controls.minDistance = 1.25;
+    this.controls.maxDistance = 9;
+
+    this.workspaceRoot = new THREE.Group();
+    this.workspaceRoot.position.set(...WORKSPACE_WORLD_POSITION);
+    this.scene.add(this.workspaceRoot);
 
     this.authoredGroup = new THREE.Group();
     this.runtimeGroup = new THREE.Group();
-    this.scene.add(this.authoredGroup, this.runtimeGroup);
+    this.workspaceRoot.add(this.authoredGroup, this.runtimeGroup);
     this.runtimeGroup.visible = false;
 
     this.nodeMeshes = new Map();
     this.runtimeRoots = new Map();
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
-    this.buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -BUILD_Y);
+    this.buildPlane = new THREE.Plane();
+    this.tempPoint = new THREE.Vector3();
+    this.tempPoint2 = new THREE.Vector3();
+    this.tempNormal = new THREE.Vector3();
+    this.runFocusLocal = new THREE.Vector3();
+    this.runFocusCount = 0;
+    this.followRun = true;
+    this.mode = 'build';
 
     this.ghostBeam = new THREE.Mesh(beamGeometry, ghostMaterial);
     this.ghostBeam.visible = false;
-    this.scene.add(this.ghostBeam);
+    this.workspaceRoot.add(this.ghostBeam);
+
+    this.spatialPanel = new SpatialToolPanel();
+    this.workspaceRoot.add(this.spatialPanel.group);
 
     this.#buildEnvironment();
+    this.#buildWorkspace();
     this.#resize();
     window.addEventListener('resize', () => this.#resize());
   }
 
   #buildEnvironment() {
-    const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x14202b, 1.8);
+    const hemi = new THREE.HemisphereLight(0xbde6ff, 0x111921, 1.65);
     this.scene.add(hemi);
 
-    const key = new THREE.DirectionalLight(0xffffff, 2.6);
-    key.position.set(3, 6, 2);
+    const key = new THREE.DirectionalLight(0xffffff, 2.9);
+    key.position.set(3.8, 6.5, 2.8);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.camera.left = -5;
@@ -101,28 +147,79 @@ export class RiftworksScene {
     key.shadow.camera.bottom = -5;
     this.scene.add(key);
 
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(11, 11),
-      new THREE.MeshStandardMaterial({ color: 0x17222c, roughness: 0.9, metalness: 0.04 }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(0, 0, -1.5);
-    floor.receiveShadow = true;
-    this.scene.add(floor);
+    const fill = new THREE.PointLight(0x52bce9, 12, 7, 2);
+    fill.position.set(-3, 2.4, 0.4);
+    this.scene.add(fill);
 
-    const buildGrid = new THREE.GridHelper(4, 16, 0x4cc8ff, 0x23445b);
-    buildGrid.position.set(0, BUILD_Y, -1.45);
+    const roomFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(14, 14),
+      new THREE.MeshStandardMaterial({ color: 0x111a22, roughness: 0.92, metalness: 0.02 }),
+    );
+    roomFloor.rotation.x = -Math.PI / 2;
+    roomFloor.receiveShadow = true;
+    this.scene.add(roomFloor);
+
+    const worldGrid = new THREE.GridHelper(10, 20, 0x193847, 0x152733);
+    worldGrid.position.y = 0.003;
+    worldGrid.material.transparent = true;
+    worldGrid.material.opacity = 0.24;
+    this.scene.add(worldGrid);
+
+    const rearWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(9, 4.5),
+      new THREE.MeshStandardMaterial({ color: 0x0b131b, roughness: 0.88, metalness: 0.08 }),
+    );
+    rearWall.position.set(0, 2.25, -4.3);
+    this.scene.add(rearWall);
+  }
+
+  #buildWorkspace() {
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(3.55, 0.09, 2.7),
+      new THREE.MeshStandardMaterial({ color: 0x182832, roughness: 0.48, metalness: 0.46 }),
+    );
+    deck.position.y = -0.055;
+    deck.receiveShadow = true;
+    deck.castShadow = true;
+    this.workspaceRoot.add(deck);
+
+    const deckGrid = new THREE.GridHelper(3.35, 20, 0x44c7ef, 0x244656);
+    deckGrid.position.y = 0.004;
+    deckGrid.material.transparent = true;
+    deckGrid.material.opacity = 0.33;
+    this.workspaceRoot.add(deckGrid);
+
+    const buildGrid = new THREE.GridHelper(3.05, 12, 0x67dfff, 0x2b6178);
+    buildGrid.position.y = BUILD_Y;
     buildGrid.material.transparent = true;
-    buildGrid.material.opacity = 0.25;
-    this.scene.add(buildGrid);
+    buildGrid.material.opacity = 0.15;
+    this.workspaceRoot.add(buildGrid);
 
-    const frame = new THREE.Mesh(
-      new THREE.TorusGeometry(1.35, 0.018, 8, 64),
-      new THREE.MeshBasicMaterial({ color: 0x2f6f8d, transparent: true, opacity: 0.48 }),
+    const buildRing = new THREE.Mesh(
+      new THREE.TorusGeometry(1.24, 0.014, 8, 64),
+      new THREE.MeshBasicMaterial({ color: 0x46badf, transparent: true, opacity: 0.48 }),
     );
-    frame.rotation.x = Math.PI / 2;
-    frame.position.set(0, BUILD_Y - 0.015, -1.45);
-    this.scene.add(frame);
+    buildRing.rotation.x = Math.PI / 2;
+    buildRing.position.y = BUILD_Y - 0.012;
+    this.workspaceRoot.add(buildRing);
+
+    const underGlow = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.3, 2.45),
+      new THREE.MeshBasicMaterial({ color: 0x123c4c, transparent: true, opacity: 0.16, side: THREE.DoubleSide }),
+    );
+    underGlow.rotation.x = -Math.PI / 2;
+    underGlow.position.y = -0.105;
+    this.workspaceRoot.add(underGlow);
+
+    const cornerGeometry = new THREE.BoxGeometry(0.07, 0.16, 0.07);
+    const cornerMaterial = new THREE.MeshStandardMaterial({ color: 0x4cc6e8, emissive: 0x0f5368, emissiveIntensity: 0.8, roughness: 0.3 });
+    for (const x of [-1.68, 1.68]) {
+      for (const z of [-1.25, 1.25]) {
+        const corner = new THREE.Mesh(cornerGeometry, cornerMaterial);
+        corner.position.set(x, 0.05, z);
+        this.workspaceRoot.add(corner);
+      }
+    }
   }
 
   #resize() {
@@ -131,6 +228,16 @@ export class RiftworksScene {
     this.camera.aspect = width / Math.max(height, 1);
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+  }
+
+  worldToWorkspacePoint(worldPoint, target = new THREE.Vector3()) {
+    this.workspaceRoot.updateMatrixWorld(true);
+    return this.workspaceRoot.worldToLocal(target.copy(worldPoint));
+  }
+
+  workspaceToWorldPoint(localPoint, target = new THREE.Vector3()) {
+    this.workspaceRoot.updateMatrixWorld(true);
+    return this.workspaceRoot.localToWorld(target.copy(localPoint));
   }
 
   renderAuthored(document, plan) {
@@ -150,7 +257,7 @@ export class RiftworksScene {
       if (component.kind !== 'powered-wheel') continue;
       const root = new THREE.Group();
       root.position.set(...component.center);
-      root.add(createWheelShape(component, authoredWheelMaterial));
+      root.add(createWheelShape(component, authoredWheelMaterial, true));
       this.authoredGroup.add(root);
     }
 
@@ -187,31 +294,71 @@ export class RiftworksScene {
       if (component.kind !== 'powered-wheel') continue;
       const root = new THREE.Group();
       root.position.set(...component.center);
-      root.add(createWheelShape(component, runtimeWheelMaterial));
+      root.add(createWheelShape(component, runtimeWheelMaterial, false));
       this.runtimeRoots.set(component.id, root);
       this.runtimeGroup.add(root);
     }
   }
 
   updateRuntime(poses) {
+    this.runFocusLocal.set(0, 0, 0);
+    this.runFocusCount = 0;
     for (const [id, pose] of poses) {
       const root = this.runtimeRoots.get(id);
-      if (!root) continue;
-      root.position.set(...pose.position);
-      root.quaternion.set(...pose.rotation);
+      if (root) {
+        root.position.set(...pose.position);
+        root.quaternion.set(...pose.rotation);
+      }
+      if (id.startsWith('island-')) {
+        this.runFocusLocal.add(new THREE.Vector3(...pose.position));
+        this.runFocusCount += 1;
+      }
     }
+    if (this.runFocusCount > 0) this.runFocusLocal.multiplyScalar(1 / this.runFocusCount);
   }
 
   setMode(mode) {
+    this.mode = mode;
     const running = mode === 'run';
     this.authoredGroup.visible = !running;
     this.runtimeGroup.visible = running;
     this.ghostBeam.visible = false;
   }
 
+  setRunFollow(enabled) {
+    this.followRun = enabled;
+  }
+
+  focusRuntimeNow() {
+    if (this.runFocusCount === 0) return;
+    const world = this.workspaceToWorldPoint(this.runFocusLocal, this.tempPoint);
+    const delta = world.clone().sub(this.controls.target);
+    this.controls.target.add(delta);
+    this.camera.position.add(delta);
+  }
+
+  updateSpatialControls(state) {
+    this.spatialPanel.setState(state);
+  }
+
+  pickSpatialAction(controller) {
+    controller.updateWorldMatrix(true, false);
+    const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+    const direction = new THREE.Vector3(0, 0, -1).transformDirection(controller.matrixWorld);
+    this.raycaster.set(origin, direction);
+    const hit = this.raycaster.intersectObjects(this.spatialPanel.getHitTargets(), false)[0];
+    return hit?.object.userData.spatialAction ?? null;
+  }
+
+  hoverSpatialAction(controller) {
+    const action = this.pickSpatialAction(controller);
+    this.spatialPanel.setHover(action);
+    return action;
+  }
+
   showGhost(start, end, valid = true) {
     fitBeam(this.ghostBeam, start, end, 0.075);
-    this.ghostBeam.material.color.setHex(valid ? 0x8af7c8 : 0xff7082);
+    this.ghostBeam.material.color.setHex(valid ? 0x7ef2c2 : 0xff7082);
     this.ghostBeam.visible = true;
   }
 
@@ -234,16 +381,20 @@ export class RiftworksScene {
 
   pointOnBuildPlane(clientX, clientY) {
     this.#setPointer(clientX, clientY);
-    const point = new THREE.Vector3();
-    return this.raycaster.ray.intersectPlane(this.buildPlane, point) ? point : null;
+    const planePoint = this.workspaceToWorldPoint(this.tempPoint.set(0, BUILD_Y, 0), this.tempPoint2);
+    this.tempNormal.set(0, 1, 0).transformDirection(this.workspaceRoot.matrixWorld);
+    this.buildPlane.setFromNormalAndCoplanarPoint(this.tempNormal, planePoint);
+    const worldHit = new THREE.Vector3();
+    if (!this.raycaster.ray.intersectPlane(this.buildPlane, worldHit)) return null;
+    return this.worldToWorkspacePoint(worldHit, worldHit);
   }
 
-  nearestNode(document, point, radius = 0.16, excludedId = null) {
+  nearestNode(document, localPoint, radius = 0.16, excludedId = null) {
     let best = null;
     let bestDistance = radius;
     for (const node of document.nodes) {
       if (node.id === excludedId) continue;
-      const distance = point.distanceTo(new THREE.Vector3(...node.position));
+      const distance = localPoint.distanceTo(new THREE.Vector3(...node.position));
       if (distance <= bestDistance) {
         best = node.id;
         bestDistance = distance;
@@ -253,6 +404,12 @@ export class RiftworksScene {
   }
 
   render() {
+    if (this.mode === 'run' && this.followRun && this.runFocusCount > 0 && !this.renderer.xr.isPresenting) {
+      const targetWorld = this.workspaceToWorldPoint(this.runFocusLocal, this.tempPoint);
+      const delta = targetWorld.clone().sub(this.controls.target).multiplyScalar(0.075);
+      this.controls.target.add(delta);
+      this.camera.position.add(delta);
+    }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }
