@@ -51,6 +51,7 @@ function createPreviewShape(component) {
 export class ComponentInteractionLayer {
   constructor(view) {
     this.view = view;
+    this.view.componentInteractionLayer = this;
     this.group = new THREE.Group();
     this.view.workspaceRoot.add(this.group);
 
