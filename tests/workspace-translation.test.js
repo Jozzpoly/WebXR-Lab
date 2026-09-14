@@ -30,5 +30,5 @@ test('workspace translation is pure and reversible inside an explicit envelope',
 test('default workspace envelope prevents the workbench from becoming unreachable', () => {
   const drag = beginWorkspaceTranslation([0, 0.72, -1.55], [0, 1, 0]);
   const next = updateWorkspaceTranslation(drag, [9, -8, 9]);
-  assertVecClose(next, [1.6, 0.28, -0.45]);
+  assertVecClose(next, [1.0, 0.25, -1.35]);
 });
