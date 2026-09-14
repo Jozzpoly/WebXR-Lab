@@ -47,17 +47,19 @@ F0 passes only when the Owner can open the hosted URL in Quest Browser, enter im
 - Vite 8.3.0
 - Three.js 0.186.0
 - native WebXR through Three.js helpers
-- static hosting target: Cloudflare Pages
+- static hosting: Cloudflare Workers Static Assets
 
-No backend is required.
+No backend or Worker script is required.
 
-## Cloudflare Pages
+## Cloudflare deployment
 
-Use:
+The repository includes `wrangler.jsonc` configured as an assets-only Worker serving `./dist`.
 
-- production branch: `main`
+Use the Git integration defaults:
+
+- project name: `webxr-lab`
 - build command: `npm run build`
-- output directory: `dist`
-- root directory: repository root
+- deploy command: `npx wrangler deploy`
+- production branch: `main`
 
 The repo pins Node through `.node-version`; no environment variables are required for F0.
