@@ -102,12 +102,13 @@ export class ComponentInteractionLayer {
     return hit?.object.userData.componentId ?? null;
   }
 
-  nearest(localPoint, radius = 0.24) {
+  nearest(localPoint, minimumRadius = 0.24) {
     let best = null;
-    let bestDistance = radius;
+    let bestDistance = Infinity;
     for (const [id, proxy] of this.targets) {
+      const reach = Math.max(minimumRadius, proxy.userData.componentRadius ?? 0);
       const distance = localPoint.distanceTo(proxy.position);
-      if (distance <= bestDistance) {
+      if (distance <= reach && distance < bestDistance) {
         best = id;
         bestDistance = distance;
       }
