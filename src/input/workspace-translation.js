@@ -1,6 +1,6 @@
 export const DEFAULT_WORKSPACE_BOUNDS = {
-  min: [-1.0, 0.25, -2.1],
-  max: [1.0, 1.15, -1.35],
+  min: [-0.65, 0.52, -1.05],
+  max: [0.65, 0.95, -0.62],
 };
 
 const finiteVec3 = (value) => Array.isArray(value) && value.length === 3 && value.every(Number.isFinite);
