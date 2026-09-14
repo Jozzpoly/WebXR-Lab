@@ -21,17 +21,18 @@ Current B0 capabilities:
 - Rapier 3D runtime generated fresh on every RUN;
 - STOP discards runtime state and returns to the authored machine;
 - shared renderer resources rather than per-run GPU allocation;
-- pure core tests run before every production build;
+- pure + headless physics tests run before every production build;
 - optional IWER + DevUI desktop WebXR emulation via `?emulate=1`.
 
 This does **not** yet prove construction feel, headset ergonomics, wheels, hinges, motors, thrusters, persistence, save/load, driving, or final architecture.
 
 ## Evidence
 
-- pure MachineDocument/compiler tests: **5/5 PASS** in the development preflight;
-- production dependency install + `npm test` + Vite build: **pending** for the current B0 candidate;
-- desktop interactive smoke: **pending**;
-- IWER WebXR interaction smoke: **pending**;
+- MachineDocument/compiler semantics: **PASS** — five pure falsifiers cover validity, immutable topology edits, duplicate protection, rigid-island separation and compiler non-mutation;
+- headless Rapier RUN/STOP: **PASS** — a compiled machine receives real rigid bodies/colliders, moves materially under gravity over 180 fixed steps, authored fingerprint remains unchanged, and STOP discards runtime bodies;
+- production dependency install + full `npm test` + Vite bundle + Cloudflare deploy: **PASS** on exact commit `342d383d8e44c3d29c5d778d0ecaacd3e7647aee`;
+- desktop interactive construction/readability smoke: **not yet proven**;
+- IWER WebXR squeeze/controller interaction smoke: **not yet proven**;
 - physical Quest: **not available for the current phase**.
 
 ## Run locally
