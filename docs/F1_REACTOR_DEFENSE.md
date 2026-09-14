@@ -28,6 +28,21 @@ The live entrypoint now disables the immersive button as soon as it appears and 
 
 This is a general project rule for future heavy WebXR stages: **do not expose actionable immersive entry before all session-critical async boot work and event wiring are complete.**
 
+## Known endurance debt — transient WebGL resources
+
+Source review found that F1 creates transient projectile/effect/enemy meshes with fresh Three.js geometry and/or material resources and later removes those objects from the scene without an explicit resource lifecycle. In Three.js, removing an object from the scene does not by itself release its GPU geometry/material resources.
+
+This is a **real endurance debt**, but it does not invalidate the short F1-A4 hardware gate. The first headset test is intentionally brief and should prioritize correctness of tracking, shooting, Rapier, grab/throw and the wave loop.
+
+Before treating F1 as suitable for long repeated sessions, explicitly resolve the transient resource lifecycle using one or both of:
+
+- shared immutable geometry/material pools for common projectile/effect shapes;
+- explicit disposal of resources that are genuinely single-use.
+
+Do **not** solve this with a global `Object3D.remove()` monkeypatch or generic auto-dispose hook. Some meshes/materials are intentionally shared or reused; disposal ownership must remain explicit.
+
+The debt becomes a release blocker before endurance testing or long free-play sessions, not before the first bounded F1 hardware gate.
+
 ## Target experience
 
 Build a small room-scale **VR Reactor Defense** game in one arena.
@@ -90,4 +105,5 @@ If a material failure occurs, stop compensating and report the earliest broken s
 - Treat haptics/audio as optional feedback; they must never block primary interaction.
 - Preserve a cheap desktop fallback where practical, but physical Quest remains authority.
 - Do not expose immersive entry before session-critical async initialization and event wiring have completed.
+- Do not hide transient-resource debt behind global lifecycle monkeypatches; make GPU ownership explicit before endurance work.
 - Keep current top-level dependencies pinned; absence of a dependency lockfile remains a known reproducibility debt until deliberately resolved.
