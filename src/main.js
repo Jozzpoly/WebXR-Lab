@@ -16,7 +16,7 @@ app.innerHTML = `
     <div id="viewport" class="viewport"></div>
     <header class="topbar">
       <div>
-        <p class="eyebrow">Riftworks · B0</p>
+        <p class="eyebrow">Riftworks · B1</p>
         <h1>Machine Yard</h1>
       </div>
       <div class="status-stack">
@@ -25,29 +25,35 @@ app.innerHTML = `
       </div>
     </header>
     <aside class="panel">
-      <p class="panel-kicker">Construction loop</p>
+      <p class="panel-kicker">Build · Run · Observe · Improve</p>
       <strong id="truthLine">Loading physics…</strong>
-      <p id="detailLine">Preparing authored → runtime boundary.</p>
+      <p id="detailLine">Preparing machine-local workspace.</p>
       <div class="toolstrip" aria-label="Construction tools">
         <button id="beamToolButton" class="tool active" disabled><span>1</span> BEAM</button>
         <button id="wheelToolButton" class="tool" disabled><span>2</span> POWERED WHEEL</button>
       </div>
-      <button id="cartButton" class="specimen-button" disabled>LOAD CI-PROVEN CART SPECIMEN</button>
-      <div class="controls">
+      <div class="controls primary-controls">
         <button id="runButton" class="primary" disabled>RUN</button>
         <button id="undoButton" disabled>UNDO</button>
-        <button id="resetButton" disabled>RESET BUILD</button>
-        <button id="gridButton" class="active" disabled>GRID 25 cm</button>
+        <button id="focusButton" disabled>FOCUS MACHINE</button>
+        <button id="followButton" class="active" disabled>FOLLOW RUN: ON</button>
       </div>
-      <div class="metrics">
-        <span>nodes <b id="nodeCount">–</b></span>
-        <span>beams <b id="beamCount">–</b></span>
-        <span>wheels <b id="wheelCount">–</b></span>
-        <span>islands <b id="islandCount">–</b></span>
-      </div>
-      <p class="hint"><b>Beam:</b> LMB drag from a white socket. <b>Wheel:</b> choose Powered Wheel, then click a socket. RMB orbit. Space RUN/STOP.</p>
-      <p class="hint"><b>Smoke:</b> load the CI-proven cart to isolate browser/presentation from builder quality.</p>
-      <p class="hint"><b>XR/IWER:</b> squeeze near a socket. Active tool is shared with desktop. Add <code>?emulate=1</code> for IWER.</p>
+      <button id="cartButton" class="specimen-button" disabled>LOAD PROVEN CART</button>
+      <details class="diagnostics">
+        <summary>Build / debug controls</summary>
+        <div class="controls compact-controls">
+          <button id="resetButton" disabled>RESET BUILD</button>
+          <button id="gridButton" class="active" disabled>GRID 25 cm</button>
+        </div>
+        <div class="metrics">
+          <span>nodes <b id="nodeCount">–</b></span>
+          <span>beams <b id="beamCount">–</b></span>
+          <span>wheels <b id="wheelCount">–</b></span>
+          <span>islands <b id="islandCount">–</b></span>
+        </div>
+        <p class="hint"><b>Desktop:</b> LMB build/place · RMB orbit · Space RUN/STOP · F focus.</p>
+        <p class="hint"><b>XR/IWER:</b> trigger selects the spatial panel; grip/squeeze manipulates construction directly.</p>
+      </details>
       <div id="xrMount" class="xr-mount"></div>
     </aside>
   </div>
@@ -62,6 +68,8 @@ const runButton = document.querySelector('#runButton');
 const undoButton = document.querySelector('#undoButton');
 const resetButton = document.querySelector('#resetButton');
 const gridButton = document.querySelector('#gridButton');
+const focusButton = document.querySelector('#focusButton');
+const followButton = document.querySelector('#followButton');
 const beamToolButton = document.querySelector('#beamToolButton');
 const wheelToolButton = document.querySelector('#wheelToolButton');
 const cartButton = document.querySelector('#cartButton');
@@ -80,6 +88,7 @@ let mode = 'build';
 let tool = 'beam';
 let history = [];
 let gridEnabled = true;
+let followRun = true;
 let activePlan = compileMachine(documentState);
 let runFingerprint = null;
 
@@ -98,17 +107,27 @@ function updateUi(message = null) {
   beamToolButton.disabled = mode !== 'build';
   wheelToolButton.disabled = mode !== 'build';
   cartButton.disabled = mode !== 'build';
+  focusButton.disabled = mode !== 'run';
+  followButton.disabled = false;
   gridButton.classList.toggle('active', gridEnabled);
+  followButton.classList.toggle('active', followRun);
+  followButton.textContent = `FOLLOW RUN: ${followRun ? 'ON' : 'OFF'}`;
   beamToolButton.classList.toggle('active', tool === 'beam');
   wheelToolButton.classList.toggle('active', tool === 'powered-wheel');
   truthLine.textContent = mode === 'build'
-    ? `Authored machine is authority · ${tool === 'beam' ? 'Beam tool' : 'Powered Wheel tool'}`
-    : 'Disposable Rapier runtime is active.';
+    ? `Machine-local authored truth · ${tool === 'beam' ? 'Beam' : 'Powered Wheel'}`
+    : 'Disposable Rapier runtime · authored state untouched';
   detailLine.textContent = message ?? (mode === 'build'
     ? (tool === 'beam'
-      ? 'Drag from any socket to change structural topology.'
-      : 'Click a structural socket; axis and mount side are proposed, then stored explicitly.')
-    : 'Physics owns evaluated motion; authored state remains untouched.');
+      ? 'Drag from a socket. The workbench is presentation; machine coordinates stay local.'
+      : 'Wheel placement shows axis and positive motor direction before RUN.')
+    : 'Desktop may follow for observation; XR head pose is never moved by the game.');
+
+  view.updateSpatialControls({
+    tool,
+    mode,
+    canUndo: mode === 'build' && history.length > 0,
+  });
 }
 
 function renderAuthored() {
@@ -143,7 +162,7 @@ function commitPoweredWheel(nodeId) {
   }
 
   const next = attachPoweredWheel(documentState, nodeId, placement);
-  commitDocument(next, `Powered wheel attached at ${nodeId} · axis ${placement.axis.join(',')} · side ${placement.side > 0 ? '+' : '−'}.`);
+  commitDocument(next, `Powered wheel · axis ${placement.axis.join(',')} · side ${placement.side > 0 ? '+' : '−'}.`);
 }
 
 function selectTool(nextTool) {
@@ -161,7 +180,8 @@ function startRun() {
   view.createRuntimeVisual(activePlan);
   mode = 'run';
   view.setMode('run');
-  updateUi(`Compiled ${activePlan.islands.length} rigid island(s) and ${activePlan.components.length} mechanical component(s).`);
+  view.setRunFollow(followRun);
+  updateUi(`RUN: ${activePlan.islands.length} rigid island(s), ${activePlan.components.length} mechanical component(s).`);
 }
 
 function stopRun() {
@@ -172,9 +192,20 @@ function stopRun() {
   view.setMode('build');
   renderAuthored();
   updateUi(unchanged
-    ? 'STOP restored authored truth exactly; runtime motion was disposable.'
+    ? 'STOP: evaluated motion discarded; authored machine restored exactly.'
     : 'AUTHORITY VIOLATION: runtime changed authored truth.');
   runFingerprint = null;
+}
+
+function toggleRun() {
+  mode === 'build' ? startRun() : stopRun();
+}
+
+function undoLast() {
+  if (mode !== 'build' || history.length === 0) return;
+  documentState = history.pop();
+  renderAuthored();
+  updateUi('Undid the last authored construction command.');
 }
 
 beamToolButton.addEventListener('click', () => selectTool('beam'));
@@ -184,21 +215,22 @@ cartButton.addEventListener('click', () => {
   history.push(documentState);
   documentState = createPoweredCartMachine();
   renderAuthored();
-  updateUi('Loaded the exact cart specimen exercised by the headless locomotion test. Press RUN.');
+  updateUi('Loaded the exact powered cart specimen exercised by CI.');
 });
-runButton.addEventListener('click', () => mode === 'build' ? startRun() : stopRun());
-undoButton.addEventListener('click', () => {
-  if (mode !== 'build' || history.length === 0) return;
-  documentState = history.pop();
-  renderAuthored();
-  updateUi('Undid the last authored construction command.');
+runButton.addEventListener('click', toggleRun);
+undoButton.addEventListener('click', undoLast);
+focusButton.addEventListener('click', () => view.focusRuntimeNow());
+followButton.addEventListener('click', () => {
+  followRun = !followRun;
+  view.setRunFollow(followRun);
+  updateUi(`Desktop run follow ${followRun ? 'enabled' : 'disabled'}. XR is unaffected.`);
 });
 resetButton.addEventListener('click', () => {
   if (mode !== 'build') return;
   history.push(documentState);
   documentState = createSeedMachine();
   renderAuthored();
-  updateUi('Reset to the seed machine.');
+  updateUi('Reset to the machine-local seed structure.');
 });
 gridButton.addEventListener('click', () => {
   gridEnabled = !gridEnabled;
@@ -207,12 +239,13 @@ gridButton.addEventListener('click', () => {
 window.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();
-    undoButton.click();
+    undoLast();
   }
   if (event.code === 'Space' && !event.repeat) {
     event.preventDefault();
-    runButton.click();
+    toggleRun();
   }
+  if (!event.repeat && event.code === 'KeyF' && mode === 'run') view.focusRuntimeNow();
   if (!event.repeat && event.code === 'Digit1') selectTool('beam');
   if (!event.repeat && event.code === 'Digit2') selectTool('powered-wheel');
 });
@@ -242,6 +275,9 @@ const xrConstruction = setupXrConstruction({
   getTool: () => tool,
   commitExtend,
   commitPoweredWheel,
+  selectTool,
+  toggleRun,
+  undo: undoLast,
   mountButton: xrMount,
 });
 
@@ -254,10 +290,12 @@ xrBadge.textContent = emulation.mode === 'iwer'
 runButton.disabled = false;
 resetButton.disabled = false;
 gridButton.disabled = false;
+focusButton.disabled = true;
+followButton.disabled = false;
 beamToolButton.disabled = false;
 wheelToolButton.disabled = false;
 cartButton.disabled = false;
-updateUi('B0 builder ready. Make topology, add real wheels, RUN, STOP, rebuild.');
+updateUi('B1 workspace ready: local machine truth, spatial XR controls, stronger observation layer.');
 
 let previousTime = performance.now();
 view.renderer.setAnimationLoop((time) => {
