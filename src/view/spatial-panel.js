@@ -21,7 +21,7 @@ function makeLabel(text) {
   return texture;
 }
 
-function makeButton(action, label, y) {
+function makeButton(y) {
   const group = new THREE.Group();
   group.position.y = y;
 
@@ -29,19 +29,17 @@ function makeButton(action, label, y) {
     new THREE.BoxGeometry(BUTTON_W, BUTTON_H, BUTTON_D),
     new THREE.MeshStandardMaterial({ color: 0x183040, roughness: 0.42, metalness: 0.24 }),
   );
-  hit.userData.spatialAction = action;
-  hit.userData.baseColor = 0x183040;
   hit.castShadow = true;
   group.add(hit);
 
   const labelMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(BUTTON_W * 0.88, BUTTON_H * 0.68),
-    new THREE.MeshBasicMaterial({ map: makeLabel(label), transparent: true, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ map: makeLabel(''), transparent: true, depthWrite: false }),
   );
   labelMesh.position.z = BUTTON_D * 0.5 + 0.002;
   group.add(labelMesh);
 
-  return { group, hit, labelMesh };
+  return { group, hit, labelMesh, action: null, label: null };
 }
 
 export class SpatialToolPanel {
@@ -57,31 +55,25 @@ export class SpatialToolPanel {
     back.castShadow = true;
     this.group.add(back);
 
-    const title = new THREE.Mesh(
+    this.titleMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(0.56, 0.11),
       new THREE.MeshBasicMaterial({ map: makeLabel('RIFTWORKS'), transparent: true, depthWrite: false }),
     );
-    title.position.set(0, 0.32, 0.005);
-    this.group.add(title);
+    this.titleMesh.position.set(0, 0.32, 0.005);
+    this.group.add(this.titleMesh);
 
-    this.buttons = new Map();
-    const definitions = [
-      ['beam', 'BEAM', 0.16],
-      ['powered-wheel', 'WHEEL', -0.02],
-      ['run-toggle', 'RUN', -0.20],
-      ['undo', 'UNDO', -0.38],
-    ];
-    for (const [action, label, y] of definitions) {
-      const button = makeButton(action, label, y);
-      this.buttons.set(action, button);
-      this.group.add(button.group);
-    }
+    this.slots = [0.16, -0.02, -0.20, -0.38].map((y) => {
+      const slot = makeButton(y);
+      this.group.add(slot.group);
+      return slot;
+    });
 
     this.hovered = null;
+    this.setState({ tool: 'beam', mode: 'build', canUndo: false, selectedComponentId: null });
   }
 
   getHitTargets() {
-    return [...this.buttons.values()].map((button) => button.hit);
+    return this.slots.map((slot) => slot.hit);
   }
 
   setHover(action) {
@@ -89,35 +81,66 @@ export class SpatialToolPanel {
     this.#refreshMaterials();
   }
 
-  setState({ tool, mode, canUndo }) {
+  setState({ tool, mode, canUndo, selectedComponentId = null }) {
     this.tool = tool;
     this.mode = mode;
     this.canUndo = canUndo;
+    this.selectedComponentId = selectedComponentId;
 
-    const runButton = this.buttons.get('run-toggle');
-    const desired = mode === 'run' ? 'STOP' : 'RUN';
-    if (runButton.currentLabel !== desired) {
-      runButton.currentLabel = desired;
-      runButton.labelMesh.material.map.dispose();
-      runButton.labelMesh.material.map = makeLabel(desired);
-      runButton.labelMesh.material.needsUpdate = true;
-    }
+    const editMode = mode === 'build' && Boolean(selectedComponentId);
+    const definitions = editMode
+      ? [
+          ['wheel-flip', 'FLIP SIDE'],
+          ['wheel-reverse', 'REVERSE'],
+          ['wheel-delete', 'DELETE'],
+          ['wheel-done', 'DONE'],
+        ]
+      : [
+          ['beam', 'BEAM'],
+          ['powered-wheel', 'WHEEL'],
+          ['run-toggle', mode === 'run' ? 'STOP' : 'RUN'],
+          ['undo', 'UNDO'],
+        ];
+
+    definitions.forEach(([action, label], index) => this.#setSlot(this.slots[index], action, label));
+    this.#setTitle(editMode ? `WHEEL ${selectedComponentId}` : 'RIFTWORKS');
     this.#refreshMaterials();
   }
 
+  #setTitle(label) {
+    if (this.titleLabel === label) return;
+    this.titleLabel = label;
+    this.titleMesh.material.map.dispose();
+    this.titleMesh.material.map = makeLabel(label);
+    this.titleMesh.material.needsUpdate = true;
+  }
+
+  #setSlot(slot, action, label) {
+    slot.action = action;
+    slot.hit.userData.spatialAction = action;
+    if (slot.label === label) return;
+    slot.label = label;
+    slot.labelMesh.material.map.dispose();
+    slot.labelMesh.material.map = makeLabel(label);
+    slot.labelMesh.material.needsUpdate = true;
+  }
+
   #refreshMaterials() {
-    for (const [action, button] of this.buttons) {
+    for (const slot of this.slots) {
+      const action = slot.action;
       const activeTool = action === this.tool;
       const hovered = action === this.hovered;
       const disabled = action === 'undo' && !this.canUndo;
       let color = 0x183040;
       if (disabled) color = 0x11171b;
+      else if (action === 'wheel-delete') color = hovered ? 0x8f3f35 : 0x5b2a28;
       else if (activeTool) color = 0x176d86;
       else if (action === 'run-toggle' && this.mode === 'run') color = 0x8a3e24;
+      else if (action === 'wheel-done') color = hovered ? 0x26715f : 0x1d594d;
       else if (hovered) color = 0x245f72;
-      button.hit.material.color.setHex(color);
-      button.hit.material.emissive.setHex(activeTool || hovered ? 0x0b2630 : 0x000000);
-      button.hit.material.emissiveIntensity = activeTool || hovered ? 0.75 : 0;
+      slot.hit.material.color.setHex(color);
+      slot.hit.material.emissive.setHex(activeTool || hovered ? 0x0b2630 : 0x000000);
+      slot.hit.material.emissiveIntensity = activeTool || hovered ? 0.75 : 0;
     }
   }
 }
