@@ -14,7 +14,14 @@ test('workspace translation follows controller delta without mutating captured s
   assert.deepEqual(drag.workspaceStart, [0, 0.72, -1.55]);
 });
 
-test('workspace translation is reversible for opposite controller delta', () => {
+test('workspace translation is pure and reversible inside an explicit envelope', () => {
   const drag = beginWorkspaceTranslation([1, 2, 3], [0, 0, 0]);
-  assert.deepEqual(updateWorkspaceTranslation(drag, [-0.5, 0.25, 1]), [0.5, 2.25, 4]);
+  const wideBounds = { min: [-10, -10, -10], max: [10, 10, 10] };
+  assert.deepEqual(updateWorkspaceTranslation(drag, [-0.5, 0.25, 1], wideBounds), [0.5, 2.25, 4]);
+});
+
+test('default workspace envelope prevents the workbench from becoming unreachable', () => {
+  const drag = beginWorkspaceTranslation([0, 0.72, -1.55], [0, 1, 0]);
+  const next = updateWorkspaceTranslation(drag, [9, -8, 9]);
+  assert.deepEqual(next, [1.6, 0.28, -0.45]);
 });
