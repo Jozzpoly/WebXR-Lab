@@ -10,15 +10,15 @@ const assertVecClose = (actual, expected, epsilon = 1e-9) => {
 };
 
 test('workspace translation follows controller delta without mutating captured state', () => {
-  const workspace = [0, 0.72, -1.55];
-  const grip = [0.2, 1.0, -0.4];
+  const workspace = [0, 0.72, -0.78];
+  const grip = [0.2, 1.0, -0.2];
   const drag = beginWorkspaceTranslation(workspace, grip);
-  const next = updateWorkspaceTranslation(drag, [0.45, 1.15, -0.75]);
+  const next = updateWorkspaceTranslation(drag, [0.45, 1.15, -0.45]);
 
-  assertVecClose(next, [0.25, 0.87, -1.9]);
-  assert.deepEqual(workspace, [0, 0.72, -1.55]);
-  assert.deepEqual(grip, [0.2, 1.0, -0.4]);
-  assert.deepEqual(drag.workspaceStart, [0, 0.72, -1.55]);
+  assertVecClose(next, [0.25, 0.87, -1.03]);
+  assert.deepEqual(workspace, [0, 0.72, -0.78]);
+  assert.deepEqual(grip, [0.2, 1.0, -0.2]);
+  assert.deepEqual(drag.workspaceStart, [0, 0.72, -0.78]);
 });
 
 test('workspace translation is pure and reversible inside an explicit envelope', () => {
@@ -28,7 +28,7 @@ test('workspace translation is pure and reversible inside an explicit envelope',
 });
 
 test('default workspace envelope prevents the workbench from becoming unreachable', () => {
-  const drag = beginWorkspaceTranslation([0, 0.72, -1.55], [0, 1, 0]);
+  const drag = beginWorkspaceTranslation([0, 0.72, -0.78], [0, 1, 0]);
   const next = updateWorkspaceTranslation(drag, [9, -8, 9]);
-  assertVecClose(next, [1.0, 0.25, -1.35]);
+  assertVecClose(next, [0.65, 0.52, -0.62]);
 });
