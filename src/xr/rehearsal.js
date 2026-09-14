@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { machineFingerprint } from '../core/machine-document.js';
+import { WORKSPACE_HANDLE_LOCAL_POSITION } from '../view/workspace-handle.js';
 
 const TRIGGER = 'trigger';
 const SQUEEZE = 'squeeze';
@@ -45,7 +46,6 @@ export function installIwerRehearsal({
   emulation,
   view,
   componentLayer,
-  xrConstruction,
   getDocument,
   getTool,
   getSelectedComponentId,
@@ -133,8 +133,7 @@ export function installIwerRehearsal({
       requireState(getSelectedComponentId() === null, 'DONE did not close component editing');
 
       const authoredBeforeWorkspaceMove = machineFingerprint(getDocument());
-      const handleWorld = xrConstruction.getWorkspaceHandleWorldPosition(new THREE.Vector3());
-      requireState(handleWorld, 'workspace handle is unavailable');
+      const handleWorld = view.workspaceRoot.localToWorld(new THREE.Vector3(...WORKSPACE_HANDLE_LOCAL_POSITION));
       await setPose(device, controller, handleWorld);
       controller.updateButtonValue(SQUEEZE, 1);
       device.notifyStateChange();
@@ -162,8 +161,7 @@ export function installIwerRehearsal({
       requireState(machineFingerprint(getDocument()) === authoredBeforeRun, 'STOP did not preserve edited authored truth');
       mark('run-stop-authority');
 
-      const changedFromSeed = machineFingerprint(getDocument()) !== authoredAtStart;
-      requireState(changedFromSeed, 'rehearsal authored no durable edit');
+      requireState(machineFingerprint(getDocument()) !== authoredAtStart, 'rehearsal authored no durable edit');
       report(`XR rehearsal PASS · ${stages.length}/${stages.length}: ${stages.map((stage) => stage.name).join(' → ')}`);
       window.__riftworksXrRehearsal = { pass: true, stages: [...stages] };
     } catch (error) {
