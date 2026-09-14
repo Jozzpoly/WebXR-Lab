@@ -2,7 +2,7 @@ name: Build gate
 
 on:
   push:
-    branches: [main]
+    branches: [main, f2-mr-spike]
   pull_request:
 
 jobs:
