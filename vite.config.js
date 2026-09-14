@@ -9,7 +9,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(root, 'index.html'),
-        mr: resolve(root, 'mr.html')
+        mr: resolve(root, 'mr.html'),
+        planes: resolve(root, 'planes.html')
       }
     }
   }
