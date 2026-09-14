@@ -12,7 +12,7 @@ The first milestone is intentionally narrow. This repository is not yet a game e
 
 ## Live state
 
-**F0 candidate implemented; physical Quest evidence not yet collected.**
+**F0 candidate implemented; first clean Cloudflare build/deploy PASS; physical Quest evidence not yet collected.**
 
 Current source includes:
 
@@ -25,7 +25,7 @@ Current source includes:
 - automatic round reset after all eight targets are cleared;
 - desktop click-to-hit fallback for cheap non-XR validation.
 
-JavaScript syntax has been checked independently. A production dependency install/build and the physical Quest run remain open gates; neither should be inferred from source inspection.
+Source-level JavaScript checks have passed. On 2026-09-14 Cloudflare successfully cloned the repository, installed dependencies in a clean build environment, ran `npm run build`, and completed `npx wrangler deploy` for the assets-only Worker. The physical Quest run remains the open authority gate for F0.
 
 ## Working principles
 
