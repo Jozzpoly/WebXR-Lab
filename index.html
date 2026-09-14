@@ -2,50 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#05070d" />
-    <title>WebXR Lab — Reactor Defense</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b10" />
+    <title>Riftworks</title>
   </head>
   <body>
-    <div id="app"></div>
-    <script>
-      (() => {
-        const readyLabel = 'Game: F1 arena ready';
-
-        function updateGate() {
-          const button = document.getElementById('VRButton');
-          if (!button) return false;
-
-          const ready = Array.from(document.querySelectorAll('.status-row'))
-            .some((row) => row.textContent.includes(readyLabel));
-
-          button.disabled = !ready;
-          if (ready) {
-            button.removeAttribute('aria-busy');
-            button.removeAttribute('title');
-            button.style.pointerEvents = '';
-            button.style.filter = '';
-          } else {
-            button.setAttribute('aria-busy', 'true');
-            button.title = 'Waiting for Reactor Defense to finish booting';
-            button.style.pointerEvents = 'none';
-            button.style.filter = 'saturate(0.45)';
-          }
-          return ready;
-        }
-
-        const observer = new MutationObserver(() => {
-          if (updateGate()) observer.disconnect();
-        });
-        observer.observe(document.documentElement, {
-          childList: true,
-          subtree: true,
-          characterData: true
-        });
-        updateGate();
-      })();
-    </script>
-    <script type="module" src="/src/reactor-defense.js"></script>
-    <script type="module" src="/src/telemetry-overlay.js"></script>
+    <main id="app"></main>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>

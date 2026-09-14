@@ -1,5 +1,4 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "webxr-lab",
   "compatibility_date": "2026-09-14",
   "assets": {
