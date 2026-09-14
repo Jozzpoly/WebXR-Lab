@@ -10,14 +10,23 @@ F1 should now maximize experiential gain per hour without turning the lab into a
 
 **F1-A4** is the active physical-headset candidate.
 
-A3 established the richer arena/gameplay runtime. A4 adds focused reliability around grab/throw without changing the core game loop:
+A3 established the richer arena/gameplay runtime. A4 adds focused reliability around grab/throw and headset entry without changing the core game loop:
 
 - Rapier grab/release uses native WebXR controller linear/angular velocity when available;
 - if velocity is absent, a bounded local estimate is derived from the recent held-object trajectory;
 - a lightweight post-session telemetry row records grab/release counts and whether native or fallback linear throw velocity was used;
+- immersive entry is boot-gated until the async Rapier/arena setup has reached `Game: F1 arena ready`;
 - obsolete A1 source duplication has been removed so `index.html` has one clear active gameplay path.
 
-The A4 production bundle has passed the independent GitHub Actions build gate. Physical Quest behavior remains unproven.
+The A4 production bundle and the later boot-gate hardening have both passed independent GitHub Actions and Cloudflare Workers builds. Physical Quest behavior for F1 remains unproven.
+
+## Async boot finding
+
+Adversarial review found that `VRButton` was originally appended before `await PhysicsSystem.create()`. On slower hardware this created a real race: a user could theoretically enter an immersive session before Rapier initialization, controller setup, F1 session listeners and the final animation loop had finished booting.
+
+The live entrypoint now disables the immersive button as soon as it appears and only enables it after the arena reports `Game: F1 arena ready`. A boot failure therefore leaves immersive entry disabled instead of allowing a partially initialized XR session.
+
+This is a general project rule for future heavy WebXR stages: **do not expose actionable immersive entry before all session-critical async boot work and event wiring are complete.**
 
 ## Target experience
 
@@ -50,6 +59,7 @@ Deliberately keep out of this run unless the core loop is already proven:
 
 F1 is not passed by a desktop preview or production build alone. A physical Quest run should demonstrate:
 
+- page boot reaches `Game: F1 arena ready` before immersive entry is actionable;
 - scene enters VR and remains stable;
 - both controllers track and fire;
 - at least one Rapier-driven object visibly collides with the world;
@@ -63,7 +73,7 @@ F1 is not passed by a desktop preview or production build alone. A physical Ques
 
 The next Quest run can be useful even if headset time is brief:
 
-1. Confirm the page identifies itself as **F1-A4** and reports Rapier ready before entering VR.
+1. Confirm the page identifies itself as **F1-A4**, reports Rapier ready, reports `Game: F1 arena ready`, and only then exposes an actionable VR button.
 2. Enter VR and spend a moment checking scale, head tracking and both blasters.
 3. Fire each controller once to confirm F0 trigger behavior did not regress.
 4. Reach for one of the orange energy orbs on the near pedestals, hold grip/squeeze, move it, then release it with a deliberate throw.
@@ -79,4 +89,5 @@ If a material failure occurs, stop compensating and report the earliest broken s
 - Physics uses pinned `@dimforge/rapier3d-compat@0.20.0` to minimize WASM/bundler uncertainty.
 - Treat haptics/audio as optional feedback; they must never block primary interaction.
 - Preserve a cheap desktop fallback where practical, but physical Quest remains authority.
+- Do not expose immersive entry before session-critical async initialization and event wiring have completed.
 - Keep current top-level dependencies pinned; absence of a dependency lockfile remains a known reproducibility debt until deliberately resolved.
