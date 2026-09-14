@@ -47,7 +47,7 @@ function makeButton(action, label, y) {
 export class SpatialToolPanel {
   constructor() {
     this.group = new THREE.Group();
-    this.group.position.set(-1.48, 1.02, 0.34);
+    this.group.position.set(-1.05, 0.66, 0.08);
 
     const back = new THREE.Mesh(
       new THREE.BoxGeometry(0.66, 0.82, 0.06),
