@@ -11,7 +11,7 @@ test('seed beam endpoints infer one shared X axle with opposite mount sides', ()
 
 test('dominant Z separation infers a Z axle instead of smuggling viewport orientation into authored intent', () => {
   let document = createSeedMachine();
-  document = extendFromNode(document, 'n2', [0.4, 1.12, -2.45]);
+  document = extendFromNode(document, 'n2', [0.4, 0.45, -1.0]);
   const placement = inferPoweredWheelPlacement(document, 'n3');
   assert.deepEqual(placement, { axis: [0, 0, 1], side: -1 });
 });
