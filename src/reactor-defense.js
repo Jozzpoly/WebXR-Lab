@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { PhysicsSystem } from './physics.js';
+import { SpatialSynth } from './spatial-audio.js';
 import './style.css';
 
-const BUILD_LABEL = 'F1-A2';
+const BUILD_LABEL = 'F1-A3';
 const MAX_CORE_HEALTH = 6;
 const TOTAL_WAVES = 3;
 
@@ -13,9 +14,9 @@ app.innerHTML = `
     <section class="panel">
       <p class="eyebrow">WebXR Lab · ${BUILD_LABEL}</p>
       <h1>Reactor Defense</h1>
-      <p class="lead">F0 passed on physical Quest 2. F1 adds Rapier 3D physics, grab/throw, dual blasters and a short drone-defense loop.</p>
+      <p class="lead">Physical Quest 2 WebXR is proven. F1 now combines Rapier physics, near grab/throw, dual blasters, positional synth audio and a three-wave reactor defense loop.</p>
       <div class="status" id="status"></div>
-      <p class="controls">Trigger: fire · Grip/squeeze: grab + throw nearby physics objects</p>
+      <p class="controls">Trigger: fire · Grip/squeeze: grab + throw · Orange orbs near the player are the easiest grab test.</p>
     </section>
     <div class="game-readout">
       <strong id="score">0</strong><span id="readoutLabel">score · wave 0 / 3</span>
@@ -44,6 +45,7 @@ setStatus('secure', window.isSecureContext ? 'Secure context: yes' : 'Secure con
 setStatus('webxr', 'WebXR API: checking…');
 setStatus('vr', 'immersive-vr: checking…');
 setStatus('physics', 'Rapier 3D: loading…');
+setStatus('audio', 'Positional audio: preparing…');
 setStatus('controllers', 'Controllers: waiting for XR session');
 setStatus('game', 'Game: preparing F1 arena…');
 
@@ -97,6 +99,9 @@ async function boot() {
 
   const physics = await PhysicsSystem.create();
   setStatus('physics', 'Rapier 3D: ready', 'ok');
+
+  const audio = new SpatialSynth(camera, scene);
+  setStatus('audio', 'Positional audio: armed (unlocks on interaction)', 'ok');
 
   scene.add(new THREE.HemisphereLight(0x9ec8ff, 0x0c1322, 1.65));
   const key = new THREE.DirectionalLight(0xe7f5ff, 2.1);
@@ -247,15 +252,35 @@ async function boot() {
     return entry;
   }
 
+  function createOrbPedestal(x, z) {
+    const pedestal = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.78, 0.42),
+      new THREE.MeshStandardMaterial({ color: 0x182b42, roughness: 0.48, metalness: 0.62 })
+    );
+    pedestal.position.set(x, 0.39, z);
+    pedestal.castShadow = true;
+    pedestal.receiveShadow = true;
+    scene.add(pedestal);
+    physics.addFixedBox({ x, y: 0.39, z }, { x: 0.21, y: 0.39, z: 0.21 }, { friction: 0.8 });
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(0.27, 0.018, 8, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffa84d, transparent: true, opacity: 0.65 })
+    );
+    halo.rotation.x = Math.PI / 2;
+    halo.position.set(x, 0.82, z);
+    scene.add(halo);
+    createEnergyOrb(x, 1.01, z, 0.18);
+  }
+
   const cratePositions = [
     [-1.55, 0.25, -1.1], [-2.05, 0.25, -1.55], [-2.55, 0.25, -2.0],
     [1.65, 0.25, -1.25], [2.1, 0.25, -1.75], [2.55, 0.25, -2.15],
     [2.25, 0.72, -2.15], [-2.25, 0.72, -2.1]
   ];
   for (const [x, y, z] of cratePositions) createCrate(x, y, z);
-  createEnergyOrb(-1.05, 0.22, -1.55);
-  createEnergyOrb(1.0, 0.22, -1.75);
-  createEnergyOrb(0.65, 0.22, -1.2);
+  createOrbPedestal(-0.55, -0.63);
+  createOrbPedestal(0.55, -0.63);
+  createEnergyOrb(0.9, 0.22, -1.55);
 
   const raycaster = new THREE.Raycaster();
   const tempMatrix = new THREE.Matrix4();
@@ -310,6 +335,10 @@ async function boot() {
     }
   }
 
+  function pulseBoth(intensity = 0.3, duration = 50) {
+    for (const state of controllers) haptic(state, intensity, duration);
+  }
+
   function spawnPulse(origin, direction, color = 0x9ff4ff, speed = 14) {
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.035, 10, 7),
@@ -360,10 +389,7 @@ async function boot() {
     ring.rotation.x = Math.PI / 2;
     root.add(ring);
 
-    const spawnX = (Math.random() - 0.5) * 8.2;
-    const spawnY = 1.05 + Math.random() * 2.05;
-    const spawnZ = -6.35 + Math.random() * 0.7;
-    root.position.set(spawnX, spawnY, spawnZ);
+    root.position.set((Math.random() - 0.5) * 8.2, 1.05 + Math.random() * 2.05, -6.35 + Math.random() * 0.7);
     scene.add(root);
 
     const drone = {
@@ -403,11 +429,14 @@ async function boot() {
     setTimeout(() => {
       if (!drone.dead) drone.body.material.emissiveIntensity = 2.2;
     }, 70);
-    spawnBurst(impactPosition ?? drone.root.position, drone.elite ? 0xffb45e : 0xff5b83, drone.elite ? 14 : 9);
+    const impact = impactPosition ?? drone.root.position;
+    spawnBurst(impact, drone.elite ? 0xffb45e : 0xff5b83, drone.elite ? 14 : 9);
+    audio.hit(impact);
     if (drone.hp <= 0) {
       score += drone.elite ? 500 : 120;
       updateReadout();
       spawnBurst(drone.root.position, drone.elite ? 0xffbb5d : 0xff4b78, drone.elite ? 28 : 17);
+      audio.explosion(drone.root.position, drone.elite);
       removeDrone(drone);
     }
   }
@@ -421,6 +450,9 @@ async function boot() {
     }
     accentLight.intensity = 8;
     setTimeout(() => { accentLight.intensity = 4.5; }, 90);
+    const coreWorld = core.getWorldPosition(new THREE.Vector3());
+    audio.coreHit(coreWorld);
+    pulseBoth(0.32, 55);
     if (coreHealth <= 0) {
       gameState = 'failed';
       setStatus('game', 'Game: reactor lost — resetting…', 'bad');
@@ -428,10 +460,15 @@ async function boot() {
     }
   }
 
+  function removeEnemyBolt(bolt) {
+    scene.remove(bolt.mesh);
+    const index = enemyBolts.indexOf(bolt);
+    if (index >= 0) enemyBolts.splice(index, 1);
+  }
+
   function clearCombatObjects() {
     for (const drone of [...drones]) removeDrone(drone);
-    for (const bolt of enemyBolts) scene.remove(bolt.mesh);
-    enemyBolts.length = 0;
+    for (const bolt of [...enemyBolts]) removeEnemyBolt(bolt);
     for (const pulse of projectiles) scene.remove(pulse.mesh);
     projectiles.length = 0;
     for (const effect of effects) scene.remove(effect.mesh);
@@ -449,14 +486,14 @@ async function boot() {
     currentWave = 0;
     waveSpawnRemaining = 0;
     waveSpawnTimer = 0;
-    nextWaveTimer = startImmediately ? 0.8 : 0;
+    nextWaveTimer = startImmediately ? 3.4 : 0;
     gameState = startImmediately ? 'between-waves' : 'ready';
     for (const pip of coreHealthPips) {
       pip.material.color.setHex(0x62f4c8);
       pip.scale.setScalar(1);
     }
     for (const pip of wavePips) pip.material.color.setHex(0x24425f);
-    setStatus('game', startImmediately ? 'Game: reactor online — incoming wave' : 'Game: ready', 'ok');
+    setStatus('game', startImmediately ? 'Game: reactor online — orient, grab, then defend' : 'Game: ready', 'ok');
     updateReadout();
   }
 
@@ -494,7 +531,9 @@ async function boot() {
     mesh.position.copy(drone.root.position);
     scene.add(mesh);
     const direction = core.getWorldPosition(new THREE.Vector3()).sub(mesh.position).normalize();
-    enemyBolts.push({ mesh, velocity: direction.multiplyScalar(drone.elite ? 2.5 : 2.05), life: 4.5 });
+    const bolt = { mesh, velocity: direction.multiplyScalar(drone.elite ? 2.5 : 2.05), life: 4.5 };
+    mesh.userData.enemyBolt = bolt;
+    enemyBolts.push(bolt);
   }
 
   function findHitOwner(object) {
@@ -502,21 +541,28 @@ async function boot() {
     while (node) {
       if (node.userData?.drone) return { type: 'drone', value: node.userData.drone };
       if (node.userData?.physicsEntry) return { type: 'physics', value: node.userData.physicsEntry };
+      if (node.userData?.enemyBolt) return { type: 'enemy-bolt', value: node.userData.enemyBolt };
       node = node.parent;
     }
     return null;
   }
 
   function fire(controllerState) {
+    audio.unlock();
     controllerState.controller.updateWorldMatrix(true, false);
     tempMatrix.identity().extractRotation(controllerState.controller.matrixWorld);
     tempDirection.set(0, 0, -1).applyMatrix4(tempMatrix).normalize();
     tempOrigin.setFromMatrixPosition(controllerState.controller.matrixWorld);
     spawnPulse(tempOrigin, tempDirection);
+    audio.shot(tempOrigin);
 
     raycaster.set(tempOrigin, tempDirection);
     raycaster.far = 30;
-    const hit = raycaster.intersectObjects([...droneRoots, ...physicsShootables], true)[0];
+    const hit = raycaster.intersectObjects([
+      ...droneRoots,
+      ...physicsShootables,
+      ...enemyBolts.map((bolt) => bolt.mesh)
+    ], true)[0];
     if (hit) {
       const owner = findHitOwner(hit.object);
       if (owner?.type === 'drone') {
@@ -525,7 +571,15 @@ async function boot() {
       } else if (owner?.type === 'physics') {
         physics.applyImpulse(owner.value, tempDirection.clone().multiplyScalar(owner.value.kind === 'energy-orb' ? 1.1 : 1.8));
         spawnBurst(hit.point, 0x7feaff, 5);
+        audio.hit(hit.point);
         haptic(controllerState, 0.22, 25);
+      } else if (owner?.type === 'enemy-bolt') {
+        removeEnemyBolt(owner.value);
+        score += 25;
+        updateReadout();
+        spawnBurst(hit.point, 0xff6688, 7);
+        audio.hit(hit.point);
+        haptic(controllerState, 0.3, 30);
       }
     } else {
       haptic(controllerState, 0.12, 18);
@@ -533,16 +587,19 @@ async function boot() {
   }
 
   function beginGrab(controllerState) {
+    audio.unlock();
     if (controllerState.grab) return;
     controllerState.grip.updateWorldMatrix(true, false);
     tempOrigin.setFromMatrixPosition(controllerState.grip.matrixWorld);
-    const entry = physics.findNearestGrabbable(tempOrigin, 0.58);
+    const entry = physics.findNearestGrabbable(tempOrigin, 0.62);
     if (!entry || !physics.beginGrab(entry, controllerState.index)) return;
 
     entry.mesh.updateMatrixWorld(true);
     const offset = new THREE.Matrix4().copy(controllerState.grip.matrixWorld).invert().multiply(entry.mesh.matrixWorld);
     controllerState.grab = { entry, offset };
     entry.mesh.material.emissiveIntensity = (entry.mesh.material.emissiveIntensity ?? 0) + 1.5;
+    controllerState.blaster.visible = false;
+    audio.grab(tempOrigin);
     haptic(controllerState, 0.35, 45);
   }
 
@@ -558,6 +615,7 @@ async function boot() {
     if (grab.entry.kind === 'crate') grab.entry.mesh.material.emissiveIntensity = 0.75;
     if (grab.entry.kind === 'energy-orb') grab.entry.mesh.material.emissiveIntensity = 1.55;
     controllerState.grab = null;
+    controllerState.blaster.visible = true;
     haptic(controllerState, 0.18, 25);
   }
 
@@ -569,22 +627,48 @@ async function boot() {
     physics.moveGrabbed(controllerState.grab.entry, tempPosition, tempQuaternion);
   }
 
+  function makeBlaster(color, emissive) {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.075, 0.105, 0.24),
+      new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: 1.25, roughness: 0.25, metalness: 0.65 })
+    );
+    body.position.z = -0.08;
+    group.add(body);
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.035, 0.22, 10),
+      new THREE.MeshStandardMaterial({ color: 0x1e2938, metalness: 0.8, roughness: 0.25 })
+    );
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.012, -0.25);
+    group.add(barrel);
+    const muzzle = new THREE.Mesh(
+      new THREE.TorusGeometry(0.038, 0.009, 8, 20),
+      new THREE.MeshBasicMaterial({ color })
+    );
+    muzzle.position.set(0, 0.012, -0.365);
+    group.add(muzzle);
+    return group;
+  }
+
   for (let i = 0; i < 2; i++) {
     const controller = renderer.xr.getController(i);
     const grip = renderer.xr.getControllerGrip(i);
-    const state = { index: i, controller, grip, grab: null, handedness: 'none' };
+    const blaster = makeBlaster(i === 0 ? 0x59c5ff : 0xff69ca, i === 0 ? 0x0c4f7d : 0x6e174f);
+    grip.add(blaster);
+    const state = { index: i, controller, grip, blaster, grab: null, handedness: 'none' };
 
     const handMarker = new THREE.Mesh(
-      new THREE.BoxGeometry(0.065, 0.105, 0.16),
+      new THREE.BoxGeometry(0.055, 0.085, 0.11),
       new THREE.MeshStandardMaterial({
         color: i === 0 ? 0x58b7ff : 0xff68c7,
         emissive: i === 0 ? 0x123e70 : 0x6b154d,
-        emissiveIntensity: 1.1,
-        roughness: 0.3,
-        metalness: 0.45
+        emissiveIntensity: 0.8,
+        roughness: 0.36,
+        metalness: 0.35
       })
     );
-    handMarker.position.z = -0.025;
+    handMarker.position.set(0, -0.02, 0.06);
     grip.add(handMarker);
 
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([
@@ -592,7 +676,7 @@ async function boot() {
     ]);
     const line = new THREE.Line(
       lineGeometry,
-      new THREE.LineBasicMaterial({ color: i === 0 ? 0x83d9ff : 0xff8ed7, transparent: true, opacity: 0.62 })
+      new THREE.LineBasicMaterial({ color: i === 0 ? 0x83d9ff : 0xff8ed7, transparent: true, opacity: 0.42 })
     );
     line.scale.z = 5.5;
     controller.add(line);
@@ -648,12 +732,10 @@ async function boot() {
       bolt.life -= dt;
       if (bolt.mesh.position.distanceToSquared(coreWorld) < 0.28 * 0.28) {
         spawnBurst(coreWorld, 0xff4366, 12);
+        removeEnemyBolt(bolt);
         damageCore(1);
-        scene.remove(bolt.mesh);
-        enemyBolts.splice(i, 1);
       } else if (bolt.life <= 0) {
-        scene.remove(bolt.mesh);
-        enemyBolts.splice(i, 1);
+        removeEnemyBolt(bolt);
       }
     }
   }
@@ -704,6 +786,7 @@ async function boot() {
   }
 
   renderer.xr.addEventListener('sessionstart', () => {
+    audio.unlock();
     refreshControllerStatus();
     resetGame(true);
     setStatus('vr', 'immersive-vr: session active', 'ok');
@@ -730,6 +813,7 @@ async function boot() {
 
   renderer.domElement.addEventListener('pointerdown', (event) => {
     if (renderer.xr.isPresenting) return;
+    audio.unlock();
     if (!desktopStarted) {
       desktopStarted = true;
       resetGame(true);
@@ -740,12 +824,18 @@ async function boot() {
       -((event.clientY - rect.top) / rect.height) * 2 + 1
     );
     raycaster.setFromCamera(pointer, camera);
-    const hit = raycaster.intersectObjects([...droneRoots, ...physicsShootables], true)[0];
+    const hit = raycaster.intersectObjects([
+      ...droneRoots,
+      ...physicsShootables,
+      ...enemyBolts.map((bolt) => bolt.mesh)
+    ], true)[0];
     if (!hit) return;
     const owner = findHitOwner(hit.object);
     if (owner?.type === 'drone') damageDrone(owner.value, 1, hit.point);
-    if (owner?.type === 'physics') {
-      physics.applyImpulse(owner.value, raycaster.ray.direction.clone().multiplyScalar(1.8));
+    if (owner?.type === 'physics') physics.applyImpulse(owner.value, raycaster.ray.direction.clone().multiplyScalar(1.8));
+    if (owner?.type === 'enemy-bolt') {
+      removeEnemyBolt(owner.value);
+      spawnBurst(hit.point, 0xff6688, 7);
     }
   });
 
