@@ -16,12 +16,18 @@ export function setupXrConstruction({
   getTool,
   commitExtend,
   commitPoweredWheel,
+  selectTool,
+  toggleRun,
+  undo,
   mountButton,
 }) {
   view.renderer.xr.setReferenceSpaceType('local-floor');
-  const desktopPosition = view.camera.position.clone();
-  const desktopQuaternion = view.camera.quaternion.clone();
+  const desktopPosition = new THREE.Vector3();
+  const desktopQuaternion = new THREE.Quaternion();
+
   view.renderer.xr.addEventListener('sessionstart', () => {
+    desktopPosition.copy(view.camera.position);
+    desktopQuaternion.copy(view.camera.quaternion);
     view.controls.enabled = false;
     view.camera.position.set(0, 0, 0);
     view.camera.quaternion.identity();
@@ -49,8 +55,9 @@ export function setupXrConstruction({
     grip.visible = false;
     view.scene.add(controller, grip);
 
-    const state = { startId: null, end: new THREE.Vector3() };
+    const state = { startId: null };
     const worldPoint = new THREE.Vector3();
+    const localPoint = new THREE.Vector3();
 
     controller.addEventListener('connected', () => {
       controller.visible = true;
@@ -63,11 +70,20 @@ export function setupXrConstruction({
       view.hideGhost();
     });
 
+    controller.addEventListener('selectstart', () => {
+      const action = view.pickSpatialAction(controller);
+      if (!action) return;
+      if (action === 'beam' || action === 'powered-wheel') selectTool(action);
+      else if (action === 'run-toggle') toggleRun();
+      else if (action === 'undo') undo();
+    });
+
     controller.addEventListener('squeezestart', () => {
       if (!isBuildMode()) return;
       grip.updateWorldMatrix(true, false);
       grip.getWorldPosition(worldPoint);
-      const nodeId = view.nearestNode(getDocument(), worldPoint, 0.18);
+      view.worldToWorkspacePoint(worldPoint, localPoint);
+      const nodeId = view.nearestNode(getDocument(), localPoint, 0.18);
       if (!nodeId) return;
 
       if (getTool() === 'powered-wheel') {
@@ -78,24 +94,24 @@ export function setupXrConstruction({
 
       if (getTool() !== 'beam') return;
       state.startId = nodeId;
-      state.end.copy(worldPoint);
     });
 
     controller.addEventListener('squeezeend', () => {
       if (getTool() !== 'beam' || !state.startId || !isBuildMode()) return;
       grip.updateWorldMatrix(true, false);
       grip.getWorldPosition(worldPoint);
+      view.worldToWorkspacePoint(worldPoint, localPoint);
       const doc = getDocument();
-      const targetId = view.nearestNode(doc, worldPoint, 0.18, state.startId);
+      const targetId = view.nearestNode(doc, localPoint, 0.18, state.startId);
       const end = targetId
         ? doc.nodes.find((node) => node.id === targetId).position
-        : worldPoint.toArray();
+        : localPoint.toArray();
       commitExtend(state.startId, end, targetId);
       state.startId = null;
       view.hideGhost();
     });
 
-    hands.push({ grip, state, worldPoint });
+    hands.push({ controller, grip, state, worldPoint, localPoint });
   }
 
   const button = VRButton.createButton(view.renderer, { requiredFeatures: ['local-floor'] });
@@ -104,19 +120,28 @@ export function setupXrConstruction({
 
   return {
     update() {
-      if (!isBuildMode() || getTool() !== 'beam') return;
-      for (const hand of hands) {
-        if (!hand.state.startId) continue;
-        hand.grip.updateWorldMatrix(true, false);
-        hand.grip.getWorldPosition(hand.worldPoint);
-        const doc = getDocument();
-        const targetId = view.nearestNode(doc, hand.worldPoint, 0.18, hand.state.startId);
-        const end = targetId
-          ? doc.nodes.find((node) => node.id === targetId).position
-          : hand.worldPoint.toArray();
-        const start = doc.nodes.find((node) => node.id === hand.state.startId)?.position;
-        if (start) view.showGhost(start, end, true);
+      if (isBuildMode() && getTool() === 'beam') {
+        for (const hand of hands) {
+          if (!hand.state.startId) continue;
+          hand.grip.updateWorldMatrix(true, false);
+          hand.grip.getWorldPosition(hand.worldPoint);
+          view.worldToWorkspacePoint(hand.worldPoint, hand.localPoint);
+          const doc = getDocument();
+          const targetId = view.nearestNode(doc, hand.localPoint, 0.18, hand.state.startId);
+          const end = targetId
+            ? doc.nodes.find((node) => node.id === targetId).position
+            : hand.localPoint.toArray();
+          const start = doc.nodes.find((node) => node.id === hand.state.startId)?.position;
+          if (start) view.showGhost(start, end, true);
+        }
       }
+
+      let hover = null;
+      for (const hand of hands) {
+        if (!hand.controller.visible) continue;
+        hover = view.pickSpatialAction(hand.controller) ?? hover;
+      }
+      view.spatialPanel.setHover(hover);
     },
   };
 }
