@@ -4,53 +4,53 @@ Riftworks is a browser/VR engineering sandbox focused on a short creative loop:
 
 > **build → run → observe → improve**
 
-The project reuses the former `WebXR-Lab` repository, but not its old gameplay architecture. Earlier WebXR work remains donor evidence that hosted immersive VR, tracked Touch controllers and interaction can run on a physical Quest 2. Active Riftworks development starts from the fresh foundation.
+The repository was rebooted in place from the former `WebXR-Lab`. Earlier Quest/WebXR work remains donor evidence that hosted immersive VR and tracked Touch interaction can run on a physical Quest 2; active architecture is Riftworks.
 
-## Current target — B0 powered-machine loop
+## Current target — B1 VR interaction & presentation foundation
 
-B0 now asks:
+B0 proved that authored machines can compile into disposable Rapier mechanics and produce real contact-driven motion. B1 deliberately pauses new mechanical primitives and strengthens the surface through which those mechanics will be understood and manipulated in VR.
 
-> Can one authored machine be changed through desktop or XR interaction, compiled into disposable Rapier mechanics, produce a real physical consequence, then STOP back to identical authored truth?
+Current B1 foundation:
 
-Current candidate capabilities:
+- `MachineDocument` uses machine-local coordinates; placement in the room is no longer authored machine truth;
+- a separate `WorkspaceRoot` owns the tabletop/workbench placement in rendered world space;
+- desktop pointer hits and XR grip poses are converted world → workspace-local before authored commands;
+- desktop and XR still converge into the same beam/wheel authored operations;
+- immersive XR has an in-world tool panel for `BEAM`, `WHEEL`, `RUN/STOP` and `UNDO`; it no longer depends on the desktop HTML panel to complete the basic loop;
+- controller trigger targets the spatial panel while grip/squeeze performs direct construction;
+- powered-wheel BUILD presentation exposes axle intent and positive motor direction instead of hiding mechanical meaning until RUN;
+- RUN presentation is driven by Rapier body poses; no independent drive animation exists;
+- desktop has `FOCUS MACHINE` and optional `FOLLOW RUN` as observation aids; these never move the XR camera/head;
+- Machine Yard has a first workbench/environment/material/lighting pass rather than a floating debug grid;
+- a transparent GitHub verification workflow independently runs install → tests → production build, in addition to Cloudflare deployment checks.
 
-- one serializable `MachineDocument` authority;
-- `socket → drag → socket/free-space` structural beam construction;
-- component-first `Powered Wheel → socket` placement;
-- wheel axis and mount side are separate explicit authored intent;
-- desktop mouse and XR/IWER squeeze routes converge into the same authored commands;
-- deterministic structural compiler with rigid islands and mechanical component lowering;
-- real Rapier wheel bodies, revolute joints and velocity motors;
-- RUN always creates fresh disposable physics state; STOP discards it;
-- authored wheels and runtime wheels are visually distinct; runtime body pose is driven by Rapier while collider orientation remains a local presentation transform;
-- asymmetric wheel markers make physical rotation observable instead of relying on a visually symmetric cylinder;
-- optional IWER + DevUI WebXR emulation via `?emulate=1`;
-- `LOAD CI-PROVEN CART SPECIMEN` loads the exact authored cart used by the headless locomotion proof, so browser/presentation failures can be separated from builder-quality failures.
-
-This still does **not** prove good construction feel, headset ergonomics, rich 3D desktop authoring, steering, suspension, hinges, thrusters, persistence, final controls or final architecture.
+The exact B1 candidate on `d32606b007a2f45a10b6790271846622fe3f4ef3` passed both the GitHub verification job and Cloudflare Workers production deployment.
 
 ## Evidence ladder
 
 - authored document + compiler semantics: **PASS**;
-- degenerate-geometry rejection and beam-axis correspondence: **PASS**;
+- degenerate geometry rejection and beam-axis correspondence: **PASS**;
 - Rapier RUN/STOP without authored mutation: **PASS**;
-- one powered wheel producing real relative joint rotation: **PASS**;
+- real powered-wheel revolute motor consequence: **PASS**;
 - opposite wheel mount sides preserving one shared motor-axis meaning: **PASS**;
-- full four-wheel powered-cart translation through wheel/floor contact: **PASS** — the complete candidate previously passed a clean Cloudflare production gate on `bc70f8c75bf5c12f6ffa1c4fe1498e7b4531fdda`;
-- clean powered-machine history checkpoint: `47319e42be27092c0c5004572bbb857b9f550b0c`; this status commit exists to obtain a fresh exact production gate after the history cleanup;
-- desktop interaction/readability Owner smoke: **not yet proven**;
-- IWER controller-path smoke: **not yet proven**;
-- physical Quest: **not available in the current phase**.
+- full four-wheel cart translation through wheel/floor contact: **PASS**;
+- machine-local coordinate refactor preserving the proven cart: **PASS**;
+- production Vite bundle with spatial XR panel/workspace layer: **PASS**;
+- Cloudflare deployment of that exact B1 candidate: **PASS**;
+- B1 desktop Owner visual/interaction smoke: **pending**;
+- IWER spatial-panel + direct-construction smoke: **pending**;
+- physical Quest ergonomics/presence: **not currently available**.
 
 ## Desktop owner smoke
 
 1. Open the deployed Riftworks URL.
-2. Press `LOAD CI-PROVEN CART SPECIMEN`.
-3. Press `RUN` or Space. The cart should fall under gravity, wheels should visibly rotate, and the machine should translate because of wheel/floor contact — there is no kinematic drive animation.
-4. Press `STOP`; the authored cart should snap back exactly to its neutral build state.
-5. Press `RESET BUILD`, use Beam to make your own topology, switch to Powered Wheel, click structural sockets, and repeat RUN → STOP → rebuild.
+2. `LOAD PROVEN CART`, then `RUN`.
+3. Verify that the wheels visibly rotate and the cart translates through contact physics.
+4. Toggle `FOLLOW RUN` and use `FOCUS MACHINE`; these are desktop observation aids only.
+5. `STOP` must restore the exact neutral authored construction.
+6. Build a small custom structure, place powered wheels, inspect their axle/motor-direction cues, and repeat RUN → STOP.
 
-The smoke above validates browser/presentation and basic Owner interaction. It does not replace physical Quest evidence.
+The desktop smoke validates presentation/readability and interaction plumbing. It is not physical VR proof.
 
 ## Local validation
 
@@ -61,14 +61,16 @@ npm run build
 npm run dev
 ```
 
-Add `?emulate=1` to the local URL to install IWER when no native immersive runtime is available.
+Add `?emulate=1` to install IWER + DevUI when no native immersive runtime is available.
 
 ## Durable boundaries
 
 - `MachineDocument` is authored truth.
+- workspace/view transforms are not machine truth.
 - compile output is disposable derived data.
 - Rapier bodies/joints are runtime state, never authored identity.
-- Three objects are presentation and interaction adapters, never machine truth.
+- Three objects, HTML, spatial UI, IWER and XR poses are presentation/input adapters.
 - desktop and XR input must converge into the same authored commands.
-- hardware evidence remains distinct from emulation and desktop evidence.
+- artificial desktop camera following must never become automatic XR head motion.
+- hardware evidence remains distinct from desktop/IWER evidence.
 - donor projects provide patterns and evidence, not automatic architecture.
