@@ -4,7 +4,7 @@ export const MIN_BEAM_LENGTH = 0.08;
 const clone = (value) => structuredClone(value);
 const finiteVec3 = (value) => Array.isArray(value) && value.length === 3 && value.every(Number.isFinite);
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-const vectorLength = (v) => Math.hypot(v[0], v[1], v[2]);
+const vectorLength = (v) => Math.hypot(...v);
 
 export function createSeedMachine() {
   return {
@@ -157,6 +157,36 @@ export function attachPoweredWheel(document, nodeId, options = {}) {
     motorVelocity: options.motorVelocity ?? 8,
     motorDamping: options.motorDamping ?? 1.2,
   });
+  next.revision += 1;
+  return assertValidMachine(next);
+}
+
+export function editPoweredWheel(document, componentId, patch = {}) {
+  assertValidMachine(document);
+  const current = document.components.find((component) => component.id === componentId);
+  if (!current) throw new Error(`unknown component: ${componentId}`);
+  if (current.kind !== 'powered-wheel') throw new Error(`component ${componentId} is not a powered wheel`);
+
+  const allowed = new Set(['axis', 'side', 'radius', 'width', 'mountOffset', 'density', 'motorVelocity', 'motorDamping']);
+  const unknown = Object.keys(patch).filter((key) => !allowed.has(key));
+  if (unknown.length) throw new Error(`unsupported powered-wheel edit field(s): ${unknown.join(', ')}`);
+
+  const next = clone(document);
+  const wheel = next.components.find((component) => component.id === componentId);
+  for (const [key, value] of Object.entries(patch)) {
+    wheel[key] = key === 'axis' && Array.isArray(value) ? [...value] : value;
+  }
+  next.revision += 1;
+  return assertValidMachine(next);
+}
+
+export function removeComponent(document, componentId) {
+  assertValidMachine(document);
+  const index = document.components.findIndex((component) => component.id === componentId);
+  if (index < 0) throw new Error(`unknown component: ${componentId}`);
+
+  const next = clone(document);
+  next.components.splice(index, 1);
   next.revision += 1;
   return assertValidMachine(next);
 }
