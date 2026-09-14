@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { beginWorkspaceTranslation, updateWorkspaceTranslation } from '../input/workspace-translation.js';
+import { WorkspaceGrabHandle } from '../view/workspace-handle.js';
 
 const rayGeometry = new THREE.BufferGeometry().setFromPoints([
   new THREE.Vector3(0, 0, 0),
@@ -25,6 +27,17 @@ export function setupXrConstruction({
   const desktopPosition = new THREE.Vector3();
   const desktopQuaternion = new THREE.Quaternion();
 
+  const workspaceHandle = new WorkspaceGrabHandle();
+  view.workspaceRoot.add(workspaceHandle.group);
+  let workspaceGrabHand = null;
+  let workspaceDrag = null;
+
+  const releaseWorkspace = () => {
+    workspaceGrabHand = null;
+    workspaceDrag = null;
+    workspaceHandle.setActive(false);
+  };
+
   view.renderer.xr.addEventListener('sessionstart', () => {
     desktopPosition.copy(view.camera.position);
     desktopQuaternion.copy(view.camera.quaternion);
@@ -34,6 +47,7 @@ export function setupXrConstruction({
     view.camera.updateMatrixWorld(true);
   });
   view.renderer.xr.addEventListener('sessionend', () => {
+    releaseWorkspace();
     view.camera.position.copy(desktopPosition);
     view.camera.quaternion.copy(desktopQuaternion);
     view.camera.updateMatrixWorld(true);
@@ -67,10 +81,12 @@ export function setupXrConstruction({
       controller.visible = false;
       grip.visible = false;
       state.startId = null;
+      if (workspaceGrabHand === index) releaseWorkspace();
       view.hideGhost();
     });
 
     controller.addEventListener('selectstart', () => {
+      if (workspaceGrabHand !== null) return;
       const action = view.pickSpatialAction(controller);
       if (!action) return;
       if (action === 'beam' || action === 'powered-wheel') selectTool(action);
@@ -79,9 +95,19 @@ export function setupXrConstruction({
     });
 
     controller.addEventListener('squeezestart', () => {
-      if (!isBuildMode()) return;
       grip.updateWorldMatrix(true, false);
       grip.getWorldPosition(worldPoint);
+
+      if (workspaceGrabHand === null && workspaceHandle.containsWorldPoint(worldPoint)) {
+        workspaceGrabHand = index;
+        workspaceDrag = beginWorkspaceTranslation(view.workspaceRoot.position.toArray(), worldPoint.toArray());
+        workspaceHandle.setActive(true);
+        state.startId = null;
+        view.hideGhost();
+        return;
+      }
+
+      if (workspaceGrabHand !== null || !isBuildMode()) return;
       view.worldToWorkspacePoint(worldPoint, localPoint);
       const nodeId = view.nearestNode(getDocument(), localPoint, 0.18);
       if (!nodeId) return;
@@ -97,7 +123,11 @@ export function setupXrConstruction({
     });
 
     controller.addEventListener('squeezeend', () => {
-      if (getTool() !== 'beam' || !state.startId || !isBuildMode()) return;
+      if (workspaceGrabHand === index) {
+        releaseWorkspace();
+        return;
+      }
+      if (workspaceGrabHand !== null || getTool() !== 'beam' || !state.startId || !isBuildMode()) return;
       grip.updateWorldMatrix(true, false);
       grip.getWorldPosition(worldPoint);
       view.worldToWorkspacePoint(worldPoint, localPoint);
@@ -120,7 +150,14 @@ export function setupXrConstruction({
 
   return {
     update() {
-      if (isBuildMode() && getTool() === 'beam') {
+      if (workspaceGrabHand !== null && workspaceDrag) {
+        const hand = hands[workspaceGrabHand];
+        hand.grip.updateWorldMatrix(true, false);
+        hand.grip.getWorldPosition(hand.worldPoint);
+        const nextPosition = updateWorkspaceTranslation(workspaceDrag, hand.worldPoint.toArray());
+        view.workspaceRoot.position.fromArray(nextPosition);
+        view.workspaceRoot.updateMatrixWorld(true);
+      } else if (isBuildMode() && getTool() === 'beam') {
         for (const hand of hands) {
           if (!hand.state.startId) continue;
           hand.grip.updateWorldMatrix(true, false);
@@ -137,9 +174,11 @@ export function setupXrConstruction({
       }
 
       let hover = null;
-      for (const hand of hands) {
-        if (!hand.controller.visible) continue;
-        hover = view.pickSpatialAction(hand.controller) ?? hover;
+      if (workspaceGrabHand === null) {
+        for (const hand of hands) {
+          if (!hand.controller.visible) continue;
+          hover = view.pickSpatialAction(hand.controller) ?? hover;
+        }
       }
       view.spatialPanel.setHover(hover);
     },
