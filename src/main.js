@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import './style.css';
 
+const BUILD_LABEL = 'F0-Q1';
+
 const app = document.querySelector('#app');
 app.innerHTML = `
   <div class="hud">
     <section class="panel">
-      <p class="eyebrow">WebXR Lab · F0</p>
+      <p class="eyebrow">WebXR Lab · ${BUILD_LABEL}</p>
       <h1>Quest presence gate</h1>
       <p class="lead">Desktop is only a preview. The real pass condition is physical Quest 2 tracking + Touch controller trigger + spatial target interaction.</p>
       <div class="status" id="status"></div>
@@ -31,10 +33,40 @@ function setStatus(key, label, state = 'pending') {
   row.querySelector('span:last-child').textContent = label;
 }
 
+let immersiveVrSupported = null;
+let xrTriggerEvents = 0;
+const connectedControllerHands = new Map();
+
+function refreshControllerStatus() {
+  const hands = [...connectedControllerHands.values()];
+  const hasLeft = hands.includes('left');
+  const hasRight = hands.includes('right');
+
+  if (hasLeft && hasRight) {
+    setStatus('controllers', 'Controllers: left + right connected', 'ok');
+    return;
+  }
+  if (hands.length > 0) {
+    const labels = hands.map((hand) => hand === 'none' ? 'unhanded' : hand).join(' + ');
+    setStatus('controllers', `Controllers: ${labels} connected; waiting for second`, 'pending');
+    return;
+  }
+  setStatus('controllers', 'Controllers: waiting for XR session');
+}
+
+function refreshInputStatus() {
+  setStatus(
+    'input',
+    `XR trigger/select events: ${xrTriggerEvents}`,
+    xrTriggerEvents > 0 ? 'ok' : 'pending'
+  );
+}
+
 setStatus('secure', window.isSecureContext ? 'Secure context: yes' : 'Secure context: no (XR will be blocked)', window.isSecureContext ? 'ok' : 'bad');
 setStatus('webxr', 'WebXR API: checking…');
 setStatus('vr', 'immersive-vr: checking…');
-setStatus('controllers', 'Controllers: waiting for XR session');
+refreshControllerStatus();
+refreshInputStatus();
 
 if (!('xr' in navigator)) {
   setStatus('webxr', 'WebXR API: unavailable in this browser', 'bad');
@@ -42,6 +74,7 @@ if (!('xr' in navigator)) {
 } else {
   setStatus('webxr', 'WebXR API: available', 'ok');
   navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+    immersiveVrSupported = supported;
     setStatus('vr', `immersive-vr: ${supported ? 'supported' : 'not supported'}`, supported ? 'ok' : 'bad');
   }).catch(() => setStatus('vr', 'immersive-vr: support check failed', 'bad'));
 }
@@ -172,6 +205,9 @@ function hitTarget(target) {
 }
 
 function fire(controller) {
+  xrTriggerEvents += 1;
+  refreshInputStatus();
+
   tempMatrix.identity().extractRotation(controller.matrixWorld);
   const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix).normalize();
   const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
@@ -190,7 +226,8 @@ function fire(controller) {
 
   const source = controller.userData.inputSource;
   const actuator = source?.gamepad?.hapticActuators?.[0];
-  actuator?.pulse?.(0.35, 35).catch?.(() => {});
+  const pulseResult = actuator?.pulse?.(0.35, 35);
+  pulseResult?.catch?.(() => {});
 }
 
 const xrControllers = [];
@@ -205,13 +242,15 @@ for (let i = 0; i < 2; i++) {
     controller.userData.inputSource = event.data;
     controller.visible = true;
     grip.visible = true;
-    setStatus('controllers', 'Controllers: XR input connected', 'ok');
+    connectedControllerHands.set(i, event.data.handedness || 'none');
+    refreshControllerStatus();
   });
   controller.addEventListener('disconnected', () => {
     controller.userData.inputSource = null;
     controller.visible = false;
     grip.visible = false;
-    setStatus('controllers', 'Controllers: XR input disconnected', 'pending');
+    connectedControllerHands.delete(i);
+    refreshControllerStatus();
   });
 
   const handMarker = new THREE.Mesh(
@@ -242,6 +281,8 @@ for (let i = 0; i < 2; i++) {
 }
 
 renderer.xr.addEventListener('sessionstart', () => {
+  xrTriggerEvents = 0;
+  refreshInputStatus();
   setStatus('vr', 'immersive-vr: session active', 'ok');
 });
 
@@ -250,7 +291,13 @@ renderer.xr.addEventListener('sessionend', () => {
     controller.visible = false;
     grip.visible = false;
   }
-  setStatus('controllers', 'Controllers: waiting for XR session', 'pending');
+  connectedControllerHands.clear();
+  refreshControllerStatus();
+  setStatus(
+    'vr',
+    immersiveVrSupported === true ? 'immersive-vr: supported (session ended)' : 'immersive-vr: session ended',
+    immersiveVrSupported === false ? 'bad' : 'ok'
+  );
 });
 
 renderer.domElement.addEventListener('pointerdown', (event) => {
