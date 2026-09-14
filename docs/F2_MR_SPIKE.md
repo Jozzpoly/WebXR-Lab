@@ -2,68 +2,95 @@
 
 ## Why this exists
 
-F0 proved hosted WebXR on physical Quest 2. F1 is the active VR gameplay gate and remains frozen on `main` until the heavier physics/grab loop is tested on hardware.
+F0 proved hosted WebXR on physical Quest 2. F1-A4 on `main` is the active VR gameplay gate and remains frozen until its heavier physics / grab loop is tested on hardware.
 
-F2 is therefore developed in isolation on `f2-mr-spike`. Its job is not to replace F1 or silently change the live root experience. It asks a separate question:
+F2 is therefore isolated on `f2-mr-spike`. It must not silently change the production root or become a reason to skip F1 evidence.
 
-> Can the same WebXR lab place a coherent Reactor Defense interaction into the Owner's real room using Quest 2 passthrough, while preserving tracked-controller aiming and a small deliberate gameplay loop?
+The F2 research question is:
+
+> Can the same WebXR lab place a coherent Reactor interaction into the Owner's real room using Quest 2 passthrough while preserving stable spatial placement and deliberate Touch-controller interaction?
 
 ## Evidence basis
 
-Meta Quest Browser documents WebXR `immersive-ar` passthrough on Quest 2, plus plane detection and anchors. Quest 2 passthrough is grayscale. Three.js exposes `ARButton` for starting `immersive-ar` sessions.
+Meta Quest Browser documents WebXR `immersive-ar` passthrough on Quest 2. Quest 2 passthrough is grayscale. Plane detection and anchors are also supported, but they are separate spatial-data capabilities and are deliberately staged after the baseline passthrough proof.
 
-F2 must feature-detect all MR capabilities at runtime. It must not infer support from the user agent.
+All capabilities must be feature-detected at runtime. Do not infer support from the user agent.
 
-## First MR gate
+## Active gate — B1 passthrough baseline
 
-The first spike deliberately does **not** require room setup, detected planes or persistent anchors. Those are optional follow-up capabilities.
+Active entrypoint: `mr.html` → `src/mr-passthrough.js`.
 
-PASS requires a physical Quest 2 run showing:
+B1 deliberately requests only:
+
+- `immersive-ar`;
+- required `local-floor` reference space.
+
+It does **not** request plane detection, anchors, room capture, hand tracking or scene understanding. This keeps the first test independent from spatial-data permissions and room-setup state.
+
+B1 PASS requires a physical Quest 2 run showing:
 
 1. the browser reports `immersive-ar` support;
-2. entering MR reveals passthrough behind transparent WebGL content;
-3. head tracking remains correct;
-4. at least one Touch controller target ray tracks correctly;
-5. trigger input can deliberately hit a virtual target placed in the real room;
-6. the virtual reactor / target field remains spatially stable for a short continuous run;
-7. leaving the session returns to the 2D page cleanly.
+2. `START MR` enters an actual immersive AR session, with no fallback to immersive VR;
+3. passthrough is visible behind transparent WebGL content;
+4. `local-floor` produces a believable floor-relative hologram height;
+5. head tracking remains correct;
+6. at least one Touch controller target ray tracks correctly;
+7. trigger input deliberately hits a virtual target;
+8. the reactor / target field remains spatially stable for a short continuous run;
+9. leaving MR returns to the 2D page cleanly.
 
-## Stretch evidence
+## Why B1 owns the session bootstrap
 
-If available without destabilizing the core spike:
+The first P0 prototype used Three.js `ARButton`. Source review of Three r186 found that `ARButton` explicitly switches the renderer to `local` reference space when the AR session starts. That would invalidate our floor-height evidence even if passthrough itself worked.
 
-- report whether plane detection is exposed;
-- count detected planes after the session has warmed up;
-- visualize plane origins/bounds only when the data is genuinely available;
-- later test anchors as a separate evidence question.
+The active B1 runtime therefore owns `navigator.xr.requestSession('immersive-ar', ...)` directly, requires `local-floor`, sets the renderer reference-space type before `setSession`, and has no VR fallback.
 
-Plane detection and anchors are not allowed to block the baseline passthrough gate.
+## Staged follow-up gates
+
+### P2 — plane detection
+
+Only after B1 passthrough PASS:
+
+- request `plane-detection` explicitly;
+- observe whether spatial-data permission / room setup is already available;
+- wait for actual plane evidence before drawing conclusions;
+- visualize detected surfaces only when the runtime genuinely exposes them.
+
+Plane detection is a separate evidence question because requesting it can invoke access to space-setup information.
+
+### P3 — anchors
+
+Only after useful plane / spatial placement evidence:
+
+- test anchor creation and stability;
+- separate short-session anchor stability from persistence across sessions;
+- do not make anchors a hidden dependency of ordinary passthrough gameplay.
 
 ## Deliberate boundaries
 
-For the first F2 spike, keep out:
+Until B1 is proven, keep out:
 
 - hand tracking as the primary input;
-- room-mesh reconstruction assumptions;
-- persistent anchors as a required dependency;
-- full F1 Rapier gameplay migration;
+- room mesh / scene reconstruction assumptions;
+- plane detection and room-capture requests;
+- anchors;
+- full F1 Rapier migration;
 - artificial locomotion;
 - imported art assets;
 - any change to the live F1 root on `main`.
 
-## Implementation strategy
+## Current implementation
 
-Use a separate `mr.html` entrypoint and a small `src/mr-spike.js` runtime on this branch.
+B1 uses:
 
-Technical baseline:
-
-- Three.js `ARButton`;
+- a separate `mr.html` Vite entrypoint;
+- custom `immersive-ar` session bootstrap;
 - `WebGLRenderer({ alpha: true })`;
-- transparent scene / no opaque background;
-- `renderer.xr.enabled = true`;
-- `local-floor` reference space when available;
-- runtime `navigator.xr.isSessionSupported('immersive-ar')` diagnostics;
-- optional `plane-detection` request, never required for entering MR;
-- the same target-ray semantics already proven by F0.
+- transparent scene / alpha-zero clear;
+- required `local-floor`;
+- the target-ray / `selectstart` interaction model already proven by F0;
+- a small holographic reactor approximately 1.8 m in front of the player;
+- six virtual targets, controller rays and trigger-driven hit feedback;
+- no Rapier or room-data dependency.
 
-The first MR scene should be intentionally small: a holographic reactor approximately 1.5–2 m in front of the player, a handful of colored virtual targets/drones around it, controller rays and trigger-driven hits. Its purpose is to prove passthrough composition and spatial stability before importing F1 physics.
+The branch is intentionally kept as a draft research spike and should not be merged into `main` before the active F1 hardware gate is resolved.
