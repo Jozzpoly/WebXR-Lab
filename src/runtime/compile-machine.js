@@ -4,15 +4,20 @@ const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scale = (v, s) => [v[0] * s, v[1] * s, v[2] * s];
 const length = (v) => Math.hypot(v[0], v[1], v[2]);
+const normalize = (v) => scale(v, 1 / length(v));
 
 function rotationFromPositiveX(direction) {
-  const len = length(direction);
-  if (len < 1e-8) throw new Error('cannot orient a zero-length beam');
-  const x = direction[0] / len;
-  const y = direction[1] / len;
-  const z = direction[2] / len;
+  const [x, y, z] = normalize(direction);
   if (x < -0.999999) return [0, 1, 0, 0];
   const q = [0, -z, y, 1 + x];
+  const qLen = Math.hypot(...q);
+  return q.map((value) => value / qLen);
+}
+
+function rotationFromPositiveY(direction) {
+  const [x, y, z] = normalize(direction);
+  if (y < -0.999999) return [1, 0, 0, 0];
+  const q = [z, 0, -x, 1 + y];
   const qLen = Math.hypot(...q);
   return q.map((value) => value / qLen);
 }
@@ -52,10 +57,14 @@ export function compileMachine(document) {
   assertValidMachine(document);
   const nodes = new Map(document.nodes.map((node) => [node.id, node]));
   const components = connectedComponents(document);
+  const nodeToIsland = new Map();
 
   const islands = components.map((nodeIds, index) => {
+    const id = `island-${index + 1}`;
+    for (const nodeId of nodeIds) nodeToIsland.set(nodeId, id);
+
     const origin = nodeIds
-      .map((id) => nodes.get(id).position)
+      .map((nodeId) => nodes.get(nodeId).position)
       .reduce((sum, position) => add(sum, position), [0, 0, 0])
       .map((value) => value / nodeIds.length);
     const nodeSet = new Set(nodeIds);
@@ -77,18 +86,40 @@ export function compileMachine(document) {
         };
       });
 
+    return { id, nodeIds, origin, beams };
+  });
+
+  const compiledComponents = document.components.map((component) => {
+    if (component.kind !== 'powered-wheel') throw new Error(`unsupported component kind: ${component.kind}`);
+    const hostIslandId = nodeToIsland.get(component.nodeId);
+    if (!hostIslandId) throw new Error(`powered wheel ${component.id} has no structural host island`);
+    const hostIsland = islands.find((island) => island.id === hostIslandId);
+    const anchorWorld = nodes.get(component.nodeId).position;
+    const axis = normalize(component.axis);
+    const center = add(anchorWorld, scale(axis, component.mountOffset));
+
     return {
-      id: `island-${index + 1}`,
-      nodeIds,
-      origin,
-      beams,
+      id: component.id,
+      kind: component.kind,
+      hostIslandId,
+      axis,
+      center,
+      hostAnchorLocal: sub(anchorWorld, hostIsland.origin),
+      wheelAnchorLocal: scale(axis, -component.mountOffset),
+      colliderRotation: rotationFromPositiveY(axis),
+      radius: component.radius,
+      width: component.width,
+      density: component.density,
+      motorVelocity: component.motorVelocity,
+      motorDamping: component.motorDamping,
     };
   });
 
   return {
-    version: 1,
+    version: 2,
     sourceRevision: document.revision,
     sourceFingerprint: machineFingerprint(document),
     islands,
+    components: compiledComponents,
   };
 }
