@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+export const WORKSPACE_HANDLE_LOCAL_POSITION = [0, 0.14, 0.58];
+
 function makeLabel(text) {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -20,7 +22,7 @@ function makeLabel(text) {
 export class WorkspaceGrabHandle {
   constructor() {
     this.group = new THREE.Group();
-    this.group.position.set(0, 0.14, 0.58);
+    this.group.position.set(...WORKSPACE_HANDLE_LOCAL_POSITION);
 
     this.railMaterial = new THREE.MeshStandardMaterial({
       color: 0x1f6378,
