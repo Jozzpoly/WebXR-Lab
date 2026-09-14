@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MACHINE_YARD_WORLD, surfaceTop, transformPoint } from '../runtime/machine-yard-world.js';
 import { SpatialToolPanel } from './spatial-panel.js';
 
 export const BUILD_Y = 0.45;
@@ -104,7 +105,8 @@ export class RiftworksScene {
 
     this.authoredGroup = new THREE.Group();
     this.runtimeGroup = new THREE.Group();
-    this.workspaceRoot.add(this.authoredGroup, this.runtimeGroup);
+    this.workspaceRoot.add(this.authoredGroup);
+    this.scene.add(this.runtimeGroup);
     this.runtimeGroup.visible = false;
 
     this.nodeMeshes = new Map();
@@ -115,7 +117,7 @@ export class RiftworksScene {
     this.tempPoint = new THREE.Vector3();
     this.tempPoint2 = new THREE.Vector3();
     this.tempNormal = new THREE.Vector3();
-    this.runFocusLocal = new THREE.Vector3();
+    this.runFocusWorld = new THREE.Vector3();
     this.runFocusCount = 0;
     this.followRun = true;
     this.mode = 'build';
@@ -151,16 +153,24 @@ export class RiftworksScene {
     fill.position.set(-3, 2.4, 0.4);
     this.scene.add(fill);
 
-    const roomFloor = new THREE.Mesh(
-      new THREE.PlaneGeometry(14, 14),
-      new THREE.MeshStandardMaterial({ color: 0x111a22, roughness: 0.92, metalness: 0.02 }),
-    );
-    roomFloor.rotation.x = -Math.PI / 2;
-    roomFloor.receiveShadow = true;
-    this.scene.add(roomFloor);
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x111a22, roughness: 0.92, metalness: 0.02 });
+    for (const surface of MACHINE_YARD_WORLD.surfaces) {
+      if (!surface.visible || surface.shape !== 'box') continue;
+      const geometry = new THREE.BoxGeometry(
+        surface.halfExtents[0] * 2,
+        surface.halfExtents[1] * 2,
+        surface.halfExtents[2] * 2,
+      );
+      const mesh = new THREE.Mesh(geometry, floorMaterial);
+      mesh.position.set(...surface.center);
+      mesh.receiveShadow = true;
+      mesh.userData.worldSurfaceId = surface.id;
+      this.scene.add(mesh);
+    }
 
+    const floor = MACHINE_YARD_WORLD.surfaces.find((surface) => surface.id === 'room-floor');
     const worldGrid = new THREE.GridHelper(10, 20, 0x193847, 0x152733);
-    worldGrid.position.y = 0.003;
+    worldGrid.position.y = surfaceTop(floor) + 0.003;
     worldGrid.material.transparent = true;
     worldGrid.material.opacity = 0.24;
     this.scene.add(worldGrid);
@@ -271,12 +281,13 @@ export class RiftworksScene {
     }
   }
 
-  createRuntimeVisual(plan) {
+  createRuntimeVisual(plan, spawnPose) {
     this.runtimeGroup.clear();
     this.runtimeRoots.clear();
     for (const island of plan.islands) {
       const root = new THREE.Group();
-      root.position.set(...island.origin);
+      root.position.set(...transformPoint(island.origin, spawnPose));
+      root.quaternion.set(...spawnPose.rotation);
       for (const beam of island.beams) {
         const mesh = new THREE.Mesh(beamGeometry, runtimeBeamMaterial);
         mesh.position.set(...beam.localPosition);
@@ -293,7 +304,8 @@ export class RiftworksScene {
     for (const component of plan.components ?? []) {
       if (component.kind !== 'powered-wheel') continue;
       const root = new THREE.Group();
-      root.position.set(...component.center);
+      root.position.set(...transformPoint(component.center, spawnPose));
+      root.quaternion.set(...spawnPose.rotation);
       root.add(createWheelShape(component, runtimeWheelMaterial, false));
       this.runtimeRoots.set(component.id, root);
       this.runtimeGroup.add(root);
@@ -301,7 +313,7 @@ export class RiftworksScene {
   }
 
   updateRuntime(poses) {
-    this.runFocusLocal.set(0, 0, 0);
+    this.runFocusWorld.set(0, 0, 0);
     this.runFocusCount = 0;
     for (const [id, pose] of poses) {
       const root = this.runtimeRoots.get(id);
@@ -310,11 +322,11 @@ export class RiftworksScene {
         root.quaternion.set(...pose.rotation);
       }
       if (id.startsWith('island-')) {
-        this.runFocusLocal.add(new THREE.Vector3(...pose.position));
+        this.runFocusWorld.add(new THREE.Vector3(...pose.position));
         this.runFocusCount += 1;
       }
     }
-    if (this.runFocusCount > 0) this.runFocusLocal.multiplyScalar(1 / this.runFocusCount);
+    if (this.runFocusCount > 0) this.runFocusWorld.multiplyScalar(1 / this.runFocusCount);
   }
 
   setMode(mode) {
@@ -331,8 +343,7 @@ export class RiftworksScene {
 
   focusRuntimeNow() {
     if (this.runFocusCount === 0) return;
-    const world = this.workspaceToWorldPoint(this.runFocusLocal, this.tempPoint);
-    const delta = world.clone().sub(this.controls.target);
+    const delta = this.runFocusWorld.clone().sub(this.controls.target);
     this.controls.target.add(delta);
     this.camera.position.add(delta);
   }
@@ -405,8 +416,7 @@ export class RiftworksScene {
 
   render() {
     if (this.mode === 'run' && this.followRun && this.runFocusCount > 0 && !this.renderer.xr.isPresenting) {
-      const targetWorld = this.workspaceToWorldPoint(this.runFocusLocal, this.tempPoint);
-      const delta = targetWorld.clone().sub(this.controls.target).multiplyScalar(0.075);
+      const delta = this.runFocusWorld.clone().sub(this.controls.target).multiplyScalar(0.075);
       this.controls.target.add(delta);
       this.camera.position.add(delta);
     }
