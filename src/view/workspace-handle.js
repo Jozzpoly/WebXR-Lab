@@ -20,7 +20,7 @@ function makeLabel(text) {
 export class WorkspaceGrabHandle {
   constructor() {
     this.group = new THREE.Group();
-    this.group.position.set(0, 0.14, 1.29);
+    this.group.position.set(0, 0.14, 0.58);
 
     this.railMaterial = new THREE.MeshStandardMaterial({
       color: 0x1f6378,
@@ -29,13 +29,13 @@ export class WorkspaceGrabHandle {
       roughness: 0.3,
       metalness: 0.55,
     });
-    this.rail = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.075, 0.075), this.railMaterial);
+    this.rail = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.075, 0.075), this.railMaterial);
     this.rail.castShadow = true;
     this.group.add(this.rail);
 
     const capGeometry = new THREE.BoxGeometry(0.08, 0.13, 0.13);
     const capMaterial = new THREE.MeshStandardMaterial({ color: 0x6dd9f5, roughness: 0.28, metalness: 0.5 });
-    for (const x of [-0.61, 0.61]) {
+    for (const x of [-0.49, 0.49]) {
       const cap = new THREE.Mesh(capGeometry, capMaterial);
       cap.position.x = x;
       cap.castShadow = true;
@@ -43,7 +43,7 @@ export class WorkspaceGrabHandle {
     }
 
     const label = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.72, 0.13),
+      new THREE.PlaneGeometry(0.66, 0.12),
       new THREE.MeshBasicMaterial({ map: makeLabel('GRAB WORKSPACE'), transparent: true, depthWrite: false }),
     );
     label.position.set(0, 0.13, 0.045);
@@ -53,7 +53,7 @@ export class WorkspaceGrabHandle {
   containsWorldPoint(worldPoint, padding = 0.13) {
     this.group.updateWorldMatrix(true, false);
     const local = this.group.worldToLocal(worldPoint.clone());
-    return Math.abs(local.x) <= 0.66 + padding &&
+    return Math.abs(local.x) <= 0.54 + padding &&
       Math.abs(local.y) <= 0.08 + padding &&
       Math.abs(local.z) <= 0.08 + padding;
   }
