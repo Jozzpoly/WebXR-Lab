@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import './style.css';
 
-const BUILD_LABEL = 'F0-Q1';
+const BUILD_LABEL = 'F0-Q2';
 
 const app = document.querySelector('#app');
 app.innerHTML = `
@@ -85,6 +85,11 @@ scene.fog = new THREE.Fog(0x070b14, 8, 24);
 
 const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 100);
 camera.position.set(0, 1.65, 3.4);
+const desktopCameraState = {
+  position: camera.position.clone(),
+  quaternion: camera.quaternion.clone(),
+  scale: camera.scale.clone()
+};
 
 const player = new THREE.Group();
 scene.add(player);
@@ -150,7 +155,12 @@ for (let i = 0; i < targetLayout.length; i++) {
   );
   target.position.fromArray(targetLayout[i]);
   target.castShadow = true;
-  target.userData = { active: true, index: i, basePosition: target.position.clone() };
+  target.userData = {
+    active: true,
+    index: i,
+    basePosition: target.position.clone(),
+    hideTimer: null
+  };
   targets.push(target);
   targetGroup.add(target);
 }
@@ -171,13 +181,25 @@ const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xa9f2ff });
 const projectiles = [];
 const raycaster = new THREE.Raycaster();
 const tempMatrix = new THREE.Matrix4();
+const tempDirection = new THREE.Vector3();
+const tempOrigin = new THREE.Vector3();
 let score = 0;
 let lastRoundComplete = 0;
 
+function clearProjectiles() {
+  for (const projectile of projectiles) scene.remove(projectile);
+  projectiles.length = 0;
+}
+
 function resetRound() {
   score = 0;
+  lastRoundComplete = 0;
   scoreEl.textContent = `0 / ${targets.length}`;
   for (const target of targets) {
+    if (target.userData.hideTimer !== null) {
+      clearTimeout(target.userData.hideTimer);
+      target.userData.hideTimer = null;
+    }
     target.visible = true;
     target.scale.setScalar(1);
     target.position.copy(target.userData.basePosition);
@@ -200,7 +222,10 @@ function hitTarget(target) {
     pip.scale.setScalar(0.75);
   }
   target.scale.setScalar(1.45);
-  setTimeout(() => { target.visible = false; }, 70);
+  target.userData.hideTimer = setTimeout(() => {
+    target.visible = false;
+    target.userData.hideTimer = null;
+  }, 70);
   if (score === targets.length) lastRoundComplete = performance.now();
 }
 
@@ -208,26 +233,34 @@ function fire(controller) {
   xrTriggerEvents += 1;
   refreshInputStatus();
 
+  // Three updates the controller's local matrix from the select event XRFrame,
+  // but world matrices are normally refreshed by scene traversal. Force it here
+  // so the shot uses the event-time pose rather than a potentially stale frame.
+  controller.updateWorldMatrix(true, false);
   tempMatrix.identity().extractRotation(controller.matrixWorld);
-  const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix).normalize();
-  const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+  tempDirection.set(0, 0, -1).applyMatrix4(tempMatrix).normalize();
+  tempOrigin.setFromMatrixPosition(controller.matrixWorld);
 
-  raycaster.set(origin, direction);
+  raycaster.set(tempOrigin, tempDirection);
   raycaster.far = 30;
   const hit = raycaster.intersectObjects(targets.filter((target) => target.userData.active), false)[0];
   if (hit) hitTarget(hit.object);
 
   const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
-  projectile.position.copy(origin);
-  projectile.userData.velocity = direction.multiplyScalar(9);
+  projectile.position.copy(tempOrigin);
+  projectile.userData.velocity = tempDirection.clone().multiplyScalar(9);
   projectile.userData.life = 1.25;
   scene.add(projectile);
   projectiles.push(projectile);
 
-  const source = controller.userData.inputSource;
-  const actuator = source?.gamepad?.hapticActuators?.[0];
-  const pulseResult = actuator?.pulse?.(0.35, 35);
-  pulseResult?.catch?.(() => {});
+  try {
+    const source = controller.userData.inputSource;
+    const actuator = source?.gamepad?.hapticActuators?.[0];
+    const pulseResult = actuator?.pulse?.(0.35, 35);
+    pulseResult?.catch?.(() => {});
+  } catch {
+    // Haptics are optional and must never break the interaction path.
+  }
 }
 
 const xrControllers = [];
@@ -240,15 +273,11 @@ for (let i = 0; i < 2; i++) {
   controller.addEventListener('selectstart', () => fire(controller));
   controller.addEventListener('connected', (event) => {
     controller.userData.inputSource = event.data;
-    controller.visible = true;
-    grip.visible = true;
     connectedControllerHands.set(i, event.data.handedness || 'none');
     refreshControllerStatus();
   });
   controller.addEventListener('disconnected', () => {
     controller.userData.inputSource = null;
-    controller.visible = false;
-    grip.visible = false;
     connectedControllerHands.delete(i);
     refreshControllerStatus();
   });
@@ -281,7 +310,11 @@ for (let i = 0; i < 2; i++) {
 }
 
 renderer.xr.addEventListener('sessionstart', () => {
+  connectedControllerHands.clear();
   xrTriggerEvents = 0;
+  clearProjectiles();
+  resetRound();
+  refreshControllerStatus();
   refreshInputStatus();
   setStatus('vr', 'immersive-vr: session active', 'ok');
 });
@@ -292,7 +325,15 @@ renderer.xr.addEventListener('sessionend', () => {
     grip.visible = false;
   }
   connectedControllerHands.clear();
+  clearProjectiles();
   refreshControllerStatus();
+
+  camera.position.copy(desktopCameraState.position);
+  camera.quaternion.copy(desktopCameraState.quaternion);
+  camera.scale.copy(desktopCameraState.scale);
+  camera.updateMatrix();
+  camera.updateMatrixWorld(true);
+
   setStatus(
     'vr',
     immersiveVrSupported === true ? 'immersive-vr: supported (session ended)' : 'immersive-vr: session ended',
@@ -335,7 +376,6 @@ function animate() {
   }
 
   if (score === targets.length && lastRoundComplete && performance.now() - lastRoundComplete > 1600) {
-    lastRoundComplete = 0;
     resetRound();
   }
 
