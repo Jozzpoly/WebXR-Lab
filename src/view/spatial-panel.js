@@ -76,6 +76,13 @@ export class SpatialToolPanel {
     return this.slots.map((slot) => slot.hit);
   }
 
+  getActionWorldPosition(action, target = new THREE.Vector3()) {
+    const slot = this.slots.find((candidate) => candidate.action === action);
+    if (!slot) return null;
+    slot.hit.updateWorldMatrix(true, false);
+    return target.setFromMatrixPosition(slot.hit.matrixWorld);
+  }
+
   setHover(action) {
     this.hovered = action;
     this.#refreshMaterials();
@@ -102,7 +109,7 @@ export class SpatialToolPanel {
           ['undo', 'UNDO'],
         ];
 
-    definitions.forEach(([action, label], index) => this.#setSlot(this.slots[index], action, label));
+    definitions.forEach(([slotAction, label], index) => this.#setSlot(this.slots[index], slotAction, label));
     this.#setTitle(editMode ? `WHEEL ${selectedComponentId}` : 'RIFTWORKS');
     this.#refreshMaterials();
   }
