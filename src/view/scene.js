@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { MACHINE_YARD_WORLD, surfaceTop, transformPoint } from '../runtime/machine-yard-world.js';
+import { MACHINE_YARD_WORLD, resolveRunSpawn, surfaceTop, transformPoint } from '../runtime/machine-yard-world.js';
 import { SpatialToolPanel } from './spatial-panel.js';
 
 export const BUILD_Y = 0.45;
@@ -281,7 +281,7 @@ export class RiftworksScene {
     }
   }
 
-  createRuntimeVisual(plan, spawnPose) {
+  createRuntimeVisual(plan, spawnPose = resolveRunSpawn(plan)) {
     this.runtimeGroup.clear();
     this.runtimeRoots.clear();
     for (const island of plan.islands) {
