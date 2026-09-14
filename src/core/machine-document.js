@@ -73,6 +73,7 @@ export function validateMachine(document) {
     if (!nodes.has(component.nodeId)) errors.push(`powered wheel ${component.id} references a missing node`);
     else if (!structuralNodes.has(component.nodeId)) errors.push(`powered wheel ${component.id} must attach to a structural node`);
     if (!finiteVec3(component.axis) || vectorLength(component.axis) < 1e-6) errors.push(`powered wheel ${component.id} has an invalid axis`);
+    if (component.side !== -1 && component.side !== 1) errors.push(`powered wheel ${component.id} has invalid side`);
     if (!(Number.isFinite(component.radius) && component.radius > 0.04)) errors.push(`powered wheel ${component.id} has invalid radius`);
     if (!(Number.isFinite(component.width) && component.width > 0.02)) errors.push(`powered wheel ${component.id} has invalid width`);
     if (!(Number.isFinite(component.mountOffset) && component.mountOffset >= 0)) errors.push(`powered wheel ${component.id} has invalid mount offset`);
@@ -138,6 +139,8 @@ export function attachPoweredWheel(document, nodeId, options = {}) {
 
   const axis = options.axis ?? [0, 0, 1];
   if (!finiteVec3(axis) || vectorLength(axis) < 1e-6) throw new Error('wheel axis must be a non-zero finite vec3');
+  const side = options.side ?? 1;
+  if (side !== -1 && side !== 1) throw new Error('wheel side must be -1 or 1');
 
   const next = clone(document);
   const componentId = `c${next.nextIds.component++}`;
@@ -146,6 +149,7 @@ export function attachPoweredWheel(document, nodeId, options = {}) {
     kind: 'powered-wheel',
     nodeId,
     axis: [...axis],
+    side,
     radius: options.radius ?? 0.26,
     width: options.width ?? 0.12,
     mountOffset: options.mountOffset ?? 0.15,
