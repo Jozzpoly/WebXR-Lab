@@ -2,39 +2,43 @@
 
 ## Purpose
 
-This repository is a deliberately small WebXR research lab. Its current job is to establish physical-headset evidence before architecture expands.
+This repository is a deliberately focused WebXR research/gameplay lab. F0 already proved the core hosted WebXR path on physical Quest 2. The active job is now to build richer VR interaction while preserving evidence discipline.
 
 ## Current authority
 
 - `main` is the live experiment branch.
-- `docs/F0_GATE.md` defines the active acceptance gate.
-- A desktop render/build is supporting evidence only.
-- Physical Meta Quest evidence is required before claiming F0 PASS.
+- `docs/F0_GATE.md` records the closed F0 hardware baseline.
+- `docs/F1_REACTOR_DEFENSE.md` defines the active milestone.
+- Desktop/build evidence is necessary but not sufficient for XR behavior.
+- Physical Meta Quest behavior remains the authority for controller feel, comfort and immersive runtime correctness.
 
-## F0 boundaries
+## F1 focus
 
-Keep F0 focused on:
+Current F1 may include:
 
 - hosted HTTPS WebXR;
 - immersive VR session lifecycle;
-- headset tracking;
-- Touch controller target-ray + grip tracking;
-- trigger input;
-- one small spatial shooting loop;
-- visible in-world hit/progress feedback.
+- Touch target-ray and grip tracking;
+- trigger-driven dual blasters;
+- Rapier 3D rigid-body physics;
+- squeeze grab/release throw interaction;
+- a small coherent enemy/wave loop;
+- immediate visual/haptic/audio feedback where it supports play.
 
-Do not introduce locomotion, a physics engine, hand tracking, passthrough, GLTF assets, multiplayer, backend infrastructure, or donor code merely because they may be useful later.
+Do not add locomotion, hand tracking, passthrough/MR, multiplayer/backend, an asset pipeline, or donor code merely because they are interesting. They need a concrete evidence or gameplay reason after the current loop is stable.
 
 ## Engineering discipline
 
-- Prefer the smallest change that improves the active evidence question.
+- Prefer the smallest change that materially improves the active playable experiment.
 - Feature-detect WebXR at runtime; do not user-agent sniff.
 - Keep target-ray and grip spaces semantically distinct.
-- Preserve a desktop fallback for cheap non-XR validation, but never treat it as headset proof.
+- Preserve a cheap desktop fallback for non-XR regressions, but never treat it as headset proof.
 - Record hardware failures before tuning around them.
-- Do not turn current Three.js/Vite choices into permanent architecture claims.
+- Keep optional feedback such as haptics from being able to break primary interaction.
+- Keep physics on a stable fixed timestep rather than render-delta stepping.
+- Do not turn current Three.js/Vite/Rapier choices into permanent architecture claims.
 - Avoid copying architecture from other Jozz projects without an explicit donor decision.
 
-## Hosting target
+## Hosting
 
-F0 targets Cloudflare Pages with `npm run build` and `dist` output. Hosting is transport, not part of gameplay architecture.
+The public build is delivered through Cloudflare Workers Static Assets. The repo builds with `npm run build`, deploys with `npx wrangler deploy`, and serves `./dist`. Hosting is transport, not gameplay architecture.
