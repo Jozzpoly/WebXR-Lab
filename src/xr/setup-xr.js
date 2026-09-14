@@ -13,11 +13,17 @@ const gripMaterial = new THREE.MeshStandardMaterial({ color: 0x243849, roughness
 
 export function setupXrConstruction({
   view,
+  componentLayer,
   getDocument,
   isBuildMode,
   getTool,
+  getSelectedComponentId,
   commitExtend,
   commitPoweredWheel,
+  previewPoweredWheel,
+  clearPoweredWheelPreview,
+  selectComponent,
+  editSelectedWheel,
   selectTool,
   toggleRun,
   undo,
@@ -53,6 +59,7 @@ export function setupXrConstruction({
   });
   view.renderer.xr.addEventListener('sessionend', () => {
     releaseWorkspace();
+    clearPoweredWheelPreview();
     workspaceDelta.copy(view.workspaceRoot.position).sub(workspaceAtSessionStart);
     view.camera.position.copy(desktopPosition).add(workspaceDelta);
     view.camera.quaternion.copy(desktopQuaternion);
@@ -89,16 +96,24 @@ export function setupXrConstruction({
       grip.visible = false;
       state.startId = null;
       if (workspaceGrabHand === index) releaseWorkspace();
+      clearPoweredWheelPreview();
       view.hideGhost();
     });
 
     controller.addEventListener('selectstart', () => {
       if (workspaceGrabHand !== null) return;
       const action = view.pickSpatialAction(controller);
-      if (!action) return;
-      if (action === 'beam' || action === 'powered-wheel') selectTool(action);
-      else if (action === 'run-toggle') toggleRun();
-      else if (action === 'undo') undo();
+      if (action) {
+        if (action === 'beam' || action === 'powered-wheel') selectTool(action);
+        else if (action === 'run-toggle') toggleRun();
+        else if (action === 'undo') undo();
+        else if (action.startsWith('wheel-')) editSelectedWheel(action);
+        return;
+      }
+
+      if (!isBuildMode()) return;
+      const componentId = componentLayer.pickController(controller);
+      if (componentId) selectComponent(componentId);
     });
 
     controller.addEventListener('squeezestart', () => {
@@ -110,16 +125,28 @@ export function setupXrConstruction({
         workspaceDrag = beginWorkspaceTranslation(view.workspaceRoot.position.toArray(), worldPoint.toArray());
         workspaceHandle.setActive(true);
         state.startId = null;
+        clearPoweredWheelPreview();
         view.hideGhost();
         return;
       }
 
       if (workspaceGrabHand !== null || !isBuildMode()) return;
       view.worldToWorkspacePoint(worldPoint, localPoint);
+
+      const componentId = componentLayer.nearest(localPoint, 0.24);
+      if (componentId) {
+        state.startId = null;
+        clearPoweredWheelPreview();
+        selectComponent(componentId);
+        return;
+      }
+      if (getSelectedComponentId()) return;
+
       const nodeId = view.nearestNode(getDocument(), localPoint, 0.18);
       if (!nodeId) return;
 
       if (getTool() === 'powered-wheel') {
+        clearPoweredWheelPreview();
         commitPoweredWheel(nodeId);
         state.startId = null;
         return;
@@ -158,6 +185,7 @@ export function setupXrConstruction({
   return {
     update() {
       if (workspaceGrabHand !== null && workspaceDrag) {
+        clearPoweredWheelPreview();
         const hand = hands[workspaceGrabHand];
         hand.grip.updateWorldMatrix(true, false);
         hand.grip.getWorldPosition(hand.worldPoint);
@@ -165,6 +193,7 @@ export function setupXrConstruction({
         view.workspaceRoot.position.fromArray(nextPosition);
         view.workspaceRoot.updateMatrixWorld(true);
       } else if (isBuildMode() && getTool() === 'beam') {
+        clearPoweredWheelPreview();
         for (const hand of hands) {
           if (!hand.state.startId) continue;
           hand.grip.updateWorldMatrix(true, false);
@@ -178,6 +207,19 @@ export function setupXrConstruction({
           const start = doc.nodes.find((node) => node.id === hand.state.startId)?.position;
           if (start) view.showGhost(start, end, true);
         }
+      } else if (isBuildMode() && getTool() === 'powered-wheel' && !getSelectedComponentId()) {
+        let previewNodeId = null;
+        for (const hand of hands) {
+          if (!hand.grip.visible) continue;
+          hand.grip.updateWorldMatrix(true, false);
+          hand.grip.getWorldPosition(hand.worldPoint);
+          view.worldToWorkspacePoint(hand.worldPoint, hand.localPoint);
+          if (componentLayer.nearest(hand.localPoint, 0.24)) continue;
+          previewNodeId = view.nearestNode(getDocument(), hand.localPoint, 0.2) ?? previewNodeId;
+        }
+        previewPoweredWheel(previewNodeId);
+      } else {
+        clearPoweredWheelPreview();
       }
 
       let hover = null;
