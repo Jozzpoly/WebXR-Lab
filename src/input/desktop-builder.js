@@ -33,7 +33,10 @@ export function attachDesktopBuilder({ view, getDocument, isBuildMode, commitExt
 
   canvas.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || !isBuildMode() || getTool() !== 'beam') return;
-    if (pickComponent?.(event.clientX, event.clientY)) return;
+    const componentId = pickComponent?.(event.clientX, event.clientY)
+      ?? view.componentInteractionLayer?.pickPointer(event.clientX, event.clientY)
+      ?? null;
+    if (componentId) return;
     const startId = view.pickNode(event.clientX, event.clientY);
     if (!startId) return;
     state.startId = startId;
