@@ -6,10 +6,10 @@ export function createPoweredCartMachine() {
     revision: 0,
     nextIds: { node: 5, beam: 6, component: 1 },
     nodes: [
-      { id: 'n1', position: [-0.45, 0.45, -1.2] },
-      { id: 'n2', position: [0.45, 0.45, -1.2] },
-      { id: 'n3', position: [-0.45, 0.45, -2.0] },
-      { id: 'n4', position: [0.45, 0.45, -2.0] },
+      { id: 'n1', position: [-0.45, 0.45, 0.4] },
+      { id: 'n2', position: [0.45, 0.45, 0.4] },
+      { id: 'n3', position: [-0.45, 0.45, -0.4] },
+      { id: 'n4', position: [0.45, 0.45, -0.4] },
     ],
     beams: [
       { id: 'b1', a: 'n1', b: 'n2', thickness: 0.1, density: 320 },
