@@ -26,6 +26,9 @@ export function setupXrConstruction({
   view.renderer.xr.setReferenceSpaceType('local-floor');
   const desktopPosition = new THREE.Vector3();
   const desktopQuaternion = new THREE.Quaternion();
+  const desktopTarget = new THREE.Vector3();
+  const workspaceAtSessionStart = new THREE.Vector3();
+  const workspaceDelta = new THREE.Vector3();
 
   const workspaceHandle = new WorkspaceGrabHandle();
   view.workspaceRoot.add(workspaceHandle.group);
@@ -41,6 +44,8 @@ export function setupXrConstruction({
   view.renderer.xr.addEventListener('sessionstart', () => {
     desktopPosition.copy(view.camera.position);
     desktopQuaternion.copy(view.camera.quaternion);
+    desktopTarget.copy(view.controls.target);
+    workspaceAtSessionStart.copy(view.workspaceRoot.position);
     view.controls.enabled = false;
     view.camera.position.set(0, 0, 0);
     view.camera.quaternion.identity();
@@ -48,8 +53,10 @@ export function setupXrConstruction({
   });
   view.renderer.xr.addEventListener('sessionend', () => {
     releaseWorkspace();
-    view.camera.position.copy(desktopPosition);
+    workspaceDelta.copy(view.workspaceRoot.position).sub(workspaceAtSessionStart);
+    view.camera.position.copy(desktopPosition).add(workspaceDelta);
     view.camera.quaternion.copy(desktopQuaternion);
+    view.controls.target.copy(desktopTarget).add(workspaceDelta);
     view.camera.updateMatrixWorld(true);
     view.controls.enabled = true;
     view.controls.update();
