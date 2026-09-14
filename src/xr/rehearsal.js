@@ -4,13 +4,21 @@ import { WORKSPACE_HANDLE_LOCAL_POSITION } from '../view/workspace-handle.js';
 
 const TRIGGER = 'trigger';
 const SQUEEZE = 'squeeze';
-const frames = (count = 2) => new Promise((resolve) => {
-  const step = () => {
-    if (count-- <= 0) resolve();
-    else requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-});
+
+function xrFrames(view, count = 2) {
+  return new Promise((resolve, reject) => {
+    const session = view.renderer.xr.getSession();
+    if (!session) {
+      reject(new Error('XR session is not active'));
+      return;
+    }
+    const step = () => {
+      if (count-- <= 0) resolve();
+      else session.requestAnimationFrame(step);
+    };
+    session.requestAnimationFrame(step);
+  });
+}
 
 function requireState(condition, message) {
   if (!condition) throw new Error(message);
@@ -23,23 +31,23 @@ function aimController(controller, from, target) {
   controller.quaternion.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
 }
 
-async function setPose(device, controller, position, target = null) {
+async function setPose(view, device, controller, position, target = null) {
   if (target) aimController(controller, position, target);
   else {
     controller.position.set(position.x, position.y, position.z);
     controller.quaternion.set(0, 0, 0, 1);
   }
   device.notifyStateChange();
-  await frames(3);
+  await xrFrames(view, 3);
 }
 
-async function pulse(device, controller, button) {
+async function pulse(view, device, controller, button) {
   controller.updateButtonValue(button, 1);
   device.notifyStateChange();
-  await frames(3);
+  await xrFrames(view, 3);
   controller.updateButtonValue(button, 0);
   device.notifyStateChange();
-  await frames(3);
+  await xrFrames(view, 3);
 }
 
 export function installIwerRehearsal({
@@ -83,80 +91,80 @@ export function installIwerRehearsal({
     device.notifyStateChange();
 
     try {
-      await frames(6);
+      await xrFrames(view, 6);
       requireState(getMode() === 'build', 'rehearsal must start in BUILD');
       requireState(getDocument().components.length === 0, 'rehearsal expects a fresh seed machine');
       mark('fresh-build');
 
-      await setPose(device, controller, rayOrigin, actionTarget('powered-wheel'));
-      await pulse(device, controller, TRIGGER);
+      await setPose(view, device, controller, rayOrigin, actionTarget('powered-wheel'));
+      await pulse(view, device, controller, TRIGGER);
       requireState(getTool() === 'powered-wheel', 'trigger ray did not select WHEEL');
       mark('ray-tool-select');
 
       const node = getDocument().nodes[0];
       requireState(node, 'seed socket missing');
       const nodeWorld = view.workspaceRoot.localToWorld(new THREE.Vector3(...node.position));
-      await setPose(device, controller, nodeWorld);
-      await frames(4);
+      await setPose(view, device, controller, nodeWorld);
+      await xrFrames(view, 4);
       requireState(componentLayer.hasPreview(), 'grip proximity did not produce wheel preview');
       mark('pre-placement-preview');
 
-      await pulse(device, controller, SQUEEZE);
+      await pulse(view, device, controller, SQUEEZE);
       requireState(getDocument().components.length === 1, 'squeeze did not author one powered wheel');
       const wheelId = getDocument().components[0].id;
       mark('squeeze-place');
 
       const wheelWorld = componentLayer.getWorldPosition(wheelId, new THREE.Vector3());
       requireState(wheelWorld, 'placed wheel interaction proxy missing');
-      await setPose(device, controller, wheelWorld);
-      await pulse(device, controller, SQUEEZE);
+      await setPose(view, device, controller, wheelWorld);
+      await pulse(view, device, controller, SQUEEZE);
       requireState(getSelectedComponentId() === wheelId, 'direct squeeze did not select existing wheel');
       mark('direct-component-select');
 
       const beforeReverse = getDocument().components.find((component) => component.id === wheelId);
       requireState(beforeReverse, 'selected wheel disappeared before edit');
       const velocityBefore = beforeReverse.motorVelocity;
-      await setPose(device, controller, rayOrigin, actionTarget('wheel-reverse'));
-      await pulse(device, controller, TRIGGER);
+      await setPose(view, device, controller, rayOrigin, actionTarget('wheel-reverse'));
+      await pulse(view, device, controller, TRIGGER);
       const afterReverse = getDocument().components.find((component) => component.id === wheelId);
       requireState(afterReverse?.id === wheelId && afterReverse.motorVelocity === -velocityBefore, 'REVERSE did not preserve identity and invert motor velocity');
 
       const sideBefore = afterReverse.side;
-      await setPose(device, controller, rayOrigin, actionTarget('wheel-flip'));
-      await pulse(device, controller, TRIGGER);
+      await setPose(view, device, controller, rayOrigin, actionTarget('wheel-flip'));
+      await pulse(view, device, controller, TRIGGER);
       const afterFlip = getDocument().components.find((component) => component.id === wheelId);
       requireState(afterFlip?.id === wheelId && afterFlip.side === -sideBefore, 'FLIP did not preserve identity and invert mount side');
       mark('contextual-wheel-edit');
 
-      await setPose(device, controller, rayOrigin, actionTarget('wheel-done'));
-      await pulse(device, controller, TRIGGER);
+      await setPose(view, device, controller, rayOrigin, actionTarget('wheel-done'));
+      await pulse(view, device, controller, TRIGGER);
       requireState(getSelectedComponentId() === null, 'DONE did not close component editing');
 
       const authoredBeforeWorkspaceMove = machineFingerprint(getDocument());
       const handleWorld = view.workspaceRoot.localToWorld(new THREE.Vector3(...WORKSPACE_HANDLE_LOCAL_POSITION));
-      await setPose(device, controller, handleWorld);
+      await setPose(view, device, controller, handleWorld);
       controller.updateButtonValue(SQUEEZE, 1);
       device.notifyStateChange();
-      await frames(3);
+      await xrFrames(view, 3);
       controller.position.x += 0.16;
       device.notifyStateChange();
-      await frames(5);
+      await xrFrames(view, 5);
       controller.updateButtonValue(SQUEEZE, 0);
       device.notifyStateChange();
-      await frames(3);
+      await xrFrames(view, 3);
       requireState(view.workspaceRoot.position.distanceTo(workspaceStart) > 0.08, 'workspace grip did not translate WorkspaceRoot');
       requireState(machineFingerprint(getDocument()) === authoredBeforeWorkspaceMove, 'workspace movement mutated authored machine truth');
       mark('workspace-grab');
 
       const authoredBeforeRun = machineFingerprint(getDocument());
-      await setPose(device, controller, rayOrigin, actionTarget('run-toggle'));
-      await pulse(device, controller, TRIGGER);
+      await setPose(view, device, controller, rayOrigin, actionTarget('run-toggle'));
+      await pulse(view, device, controller, TRIGGER);
       requireState(getMode() === 'run', 'trigger ray did not enter RUN');
-      await frames(8);
+      await xrFrames(view, 8);
       requireState(machineFingerprint(getDocument()) === authoredBeforeRun, 'RUN mutated authored truth');
 
-      await setPose(device, controller, rayOrigin, actionTarget('run-toggle'));
-      await pulse(device, controller, TRIGGER);
+      await setPose(view, device, controller, rayOrigin, actionTarget('run-toggle'));
+      await pulse(view, device, controller, TRIGGER);
       requireState(getMode() === 'build', 'trigger ray did not STOP back to BUILD');
       requireState(machineFingerprint(getDocument()) === authoredBeforeRun, 'STOP did not preserve edited authored truth');
       mark('run-stop-authority');
@@ -174,7 +182,6 @@ export function installIwerRehearsal({
       controller.updateButtonValue(SQUEEZE, 0);
       device.controlMode = 'manual';
       device.notifyStateChange();
-      await frames(2);
       const session = view.renderer.xr.getSession();
       if (session) await session.end();
       running = false;
