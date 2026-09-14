@@ -117,6 +117,17 @@ export class ComponentInteractionLayer {
     return best;
   }
 
+  getWorldPosition(componentId, target = new THREE.Vector3()) {
+    const proxy = this.targets.get(componentId);
+    if (!proxy) return null;
+    proxy.updateWorldMatrix(true, false);
+    return target.setFromMatrixPosition(proxy.matrixWorld);
+  }
+
+  hasPreview() {
+    return this.previewRoot.visible && this.previewRoot.children.length > 0;
+  }
+
   showPreview(component) {
     this.previewRoot.clear();
     if (!component) {
