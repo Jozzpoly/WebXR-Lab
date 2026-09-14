@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BUILD_Y } from '../view/scene.js';
 
-export function attachDesktopBuilder({ view, getDocument, isBuildMode, commitExtend, getGridEnabled, getTool }) {
+export function attachDesktopBuilder({ view, getDocument, isBuildMode, commitExtend, getGridEnabled, getTool, pickComponent }) {
   const canvas = view.renderer.domElement;
   const state = { startId: null, lastPoint: null, pointerId: null };
 
@@ -33,6 +33,7 @@ export function attachDesktopBuilder({ view, getDocument, isBuildMode, commitExt
 
   canvas.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || !isBuildMode() || getTool() !== 'beam') return;
+    if (pickComponent?.(event.clientX, event.clientY)) return;
     const startId = view.pickNode(event.clientX, event.clientY);
     if (!startId) return;
     state.startId = startId;
