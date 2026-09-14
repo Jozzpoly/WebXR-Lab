@@ -12,20 +12,30 @@ The first milestone is intentionally narrow. This repository is not yet a game e
 
 ## Live state
 
-**F0 candidate implemented; first clean Cloudflare build/deploy PASS; physical Quest evidence not yet collected.**
+**F0-Q1 pre-headset candidate implemented; clean Cloudflare build/deploy PASS; public desktop load PASS; physical Quest evidence not yet collected.**
+
+Public build:
+
+`https://webxr-lab.jozzpoly.workers.dev/`
 
 Current source includes:
 
 - runtime secure-context / WebXR / `immersive-vr` diagnostics;
+- explicit F0-Q1 build identity in the page UI;
+- per-session XR trigger/select event counting;
+- truthful left/right controller readiness diagnostics;
 - a small standing target-range scene with no artificial locomotion;
 - separate XR target-ray and grip spaces for two controllers;
 - trigger-driven shots using the controller target ray;
 - visible projectiles, target hit feedback and in-world progress pips;
 - optional controller haptics when exposed by the runtime;
 - automatic round reset after all eight targets are cleared;
-- desktop click-to-hit fallback for cheap non-XR validation.
+- desktop click-to-hit fallback for cheap non-XR validation;
+- explicit session-end cleanup so diagnostics do not remain falsely `active` after leaving XR.
 
-Source-level JavaScript checks have passed. On 2026-09-14 Cloudflare successfully cloned the repository, installed dependencies in a clean build environment, ran `npm run build`, and completed `npx wrangler deploy` for the assets-only Worker. The physical Quest run remains the open authority gate for F0.
+On 2026-09-14 Cloudflare successfully cloned the repository, installed dependencies in a clean build environment, ran `npm run build`, and completed `npx wrangler deploy` for the assets-only Worker. The resulting HTTPS page also rendered correctly in the Owner's desktop browser. Desktop `immersive-vr: not supported` is expected on a non-XR browser and is not a headset result.
+
+The physical Quest 2 run remains the authority gate for F0.
 
 ## Working principles
 
@@ -37,7 +47,7 @@ Source-level JavaScript checks have passed. On 2026-09-14 Cloudflare successfull
 
 ## F0 gate
 
-The exact active acceptance contract is in [`docs/F0_GATE.md`](docs/F0_GATE.md).
+The exact active acceptance contract and first hardware test protocol are in [`docs/F0_GATE.md`](docs/F0_GATE.md).
 
 F0 passes only when the Owner can open the hosted URL in Quest Browser, enter immersive VR, see tracked controllers, aim with a controller, fire with the trigger, hit spatial targets, receive immediate feedback, and complete a short repeatable round.
 
