@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSeedMachine, extendFromNode, machineFingerprint, validateMachine } from '../src/core/machine-document.js';
+import { attachPoweredWheel, createSeedMachine, extendFromNode, machineFingerprint, validateMachine } from '../src/core/machine-document.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
 
 const normalize = (v) => {
@@ -9,7 +9,6 @@ const normalize = (v) => {
 };
 
 function rotatePositiveX([x, y, z, w]) {
-  // q * (1,0,0) * q^-1, expanded for a unit quaternion.
   return [
     1 - 2 * (y * y + z * z),
     2 * (x * y + w * z),
@@ -21,7 +20,7 @@ function singleBeamDocument(a, b) {
   return {
     version: 1,
     revision: 0,
-    nextIds: { node: 3, beam: 2 },
+    nextIds: { node: 3, beam: 2, component: 1 },
     nodes: [
       { id: 'n1', position: a },
       { id: 'n2', position: b },
@@ -29,6 +28,7 @@ function singleBeamDocument(a, b) {
     beams: [
       { id: 'b1', a: 'n1', b: 'n2', thickness: 0.12, density: 420 },
     ],
+    components: [],
   };
 }
 
@@ -38,6 +38,7 @@ test('seed machine is valid and compiles to one rigid island', () => {
   const plan = compileMachine(document);
   assert.equal(plan.islands.length, 1);
   assert.equal(plan.islands[0].beams.length, 1);
+  assert.deepEqual(plan.components, []);
 });
 
 test('extendFromNode is immutable and creates topology', () => {
@@ -99,4 +100,29 @@ test('compiled beam rotation maps local +X onto authored direction', () => {
     const dot = actual[0] * expected[0] + actual[1] * expected[1] + actual[2] * expected[2];
     assert.ok(dot > 0.999999, `compiled axis diverged from authored direction: dot=${dot}`);
   }
+});
+
+test('powered wheel authoring is immutable and compiles against the structural host island', () => {
+  const original = createSeedMachine();
+  const before = machineFingerprint(original);
+  const next = attachPoweredWheel(original, 'n1', { axis: [0, 0, 2], motorVelocity: 7 });
+
+  assert.equal(machineFingerprint(original), before);
+  assert.equal(next.components.length, 1);
+  assert.equal(next.revision, 1);
+
+  const wheel = compileMachine(next).components[0];
+  assert.equal(wheel.kind, 'powered-wheel');
+  assert.equal(wheel.hostIslandId, 'island-1');
+  assert.deepEqual(wheel.axis, [0, 0, 1]);
+  assert.equal(wheel.motorVelocity, 7);
+  assert.deepEqual(wheel.hostAnchorLocal, [-0.4, 0, 0]);
+});
+
+test('powered wheel requires a real structural host and non-zero axis', () => {
+  const isolated = createSeedMachine();
+  isolated.nodes.push({ id: 'n3', position: [0, 1, -2] });
+  isolated.nextIds.node = 4;
+  assert.throws(() => attachPoweredWheel(isolated, 'n3'), /structural node/);
+  assert.throws(() => attachPoweredWheel(createSeedMachine(), 'n1', { axis: [0, 0, 0] }), /non-zero/);
 });
