@@ -9,6 +9,7 @@ import { attachDesktopBuilder } from './input/desktop-builder.js';
 import { attachDesktopComponents } from './input/desktop-components.js';
 import { inferPoweredWheelPlacement } from './input/wheel-placement.js';
 import { installXrEmulationIfNeeded } from './xr/emulation.js';
+import { installIwerRehearsal } from './xr/rehearsal.js';
 import { setupXrConstruction } from './xr/setup-xr.js';
 
 const app = document.querySelector('#app');
@@ -451,6 +452,18 @@ beamToolButton.disabled = false;
 wheelToolButton.disabled = false;
 cartButton.disabled = false;
 updateUi('B1.2 ready: wheel intent is previewable before placement and editable after placement.');
+
+const rehearsal = installIwerRehearsal({
+  emulation,
+  view,
+  componentLayer,
+  getDocument: () => documentState,
+  getTool: () => tool,
+  getSelectedComponentId: () => selectedComponentId,
+  getMode: () => mode,
+  report: (message) => { detailLine.textContent = message; },
+});
+if (rehearsal.enabled) xrBadge.textContent = 'XR: IWER rehearsal armed';
 
 let previousTime = performance.now();
 view.renderer.setAnimationLoop((time) => {
