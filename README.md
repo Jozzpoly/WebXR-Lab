@@ -26,6 +26,14 @@ Current B0 capabilities:
 
 This does **not** yet prove construction feel, headset ergonomics, wheels, hinges, motors, thrusters, persistence, save/load, driving, or final architecture.
 
+## Evidence
+
+- pure MachineDocument/compiler tests: **5/5 PASS** in the development preflight;
+- production dependency install + `npm test` + Vite build: **pending** for the current B0 candidate;
+- desktop interactive smoke: **pending**;
+- IWER WebXR interaction smoke: **pending**;
+- physical Quest: **not available for the current phase**.
+
 ## Run locally
 
 ```bash
