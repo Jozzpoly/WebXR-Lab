@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import './style.css';
 
-const BUILD_LABEL = 'F0-Q2';
+const BUILD_LABEL = 'F0-Q3';
 
 const app = document.querySelector('#app');
 app.innerHTML = `
@@ -310,7 +310,6 @@ for (let i = 0; i < 2; i++) {
 }
 
 renderer.xr.addEventListener('sessionstart', () => {
-  connectedControllerHands.clear();
   xrTriggerEvents = 0;
   clearProjectiles();
   resetRound();
