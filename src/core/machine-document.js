@@ -12,8 +12,8 @@ export function createSeedMachine() {
     revision: 0,
     nextIds: { node: 3, beam: 2, component: 1 },
     nodes: [
-      { id: 'n1', position: [-0.4, 1.12, -1.45] },
-      { id: 'n2', position: [0.4, 1.12, -1.45] },
+      { id: 'n1', position: [-0.4, 0.45, 0] },
+      { id: 'n2', position: [0.4, 0.45, 0] },
     ],
     beams: [
       { id: 'b1', a: 'n1', b: 'n2', thickness: 0.12, density: 420 },
