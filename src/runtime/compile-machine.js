@@ -96,16 +96,18 @@ export function compileMachine(document) {
     const hostIsland = islands.find((island) => island.id === hostIslandId);
     const anchorWorld = nodes.get(component.nodeId).position;
     const axis = normalize(component.axis);
-    const center = add(anchorWorld, scale(axis, component.mountOffset));
+    const mountVector = scale(axis, component.mountOffset * component.side);
+    const center = add(anchorWorld, mountVector);
 
     return {
       id: component.id,
       kind: component.kind,
       hostIslandId,
       axis,
+      side: component.side,
       center,
       hostAnchorLocal: sub(anchorWorld, hostIsland.origin),
-      wheelAnchorLocal: scale(axis, -component.mountOffset),
+      wheelAnchorLocal: scale(mountVector, -1),
       colliderRotation: rotationFromPositiveY(axis),
       radius: component.radius,
       width: component.width,
