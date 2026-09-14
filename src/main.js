@@ -53,16 +53,20 @@ scene.fog = new THREE.Fog(0x070b14, 8, 24);
 const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 100);
 camera.position.set(0, 1.65, 3.4);
 
+const player = new THREE.Group();
+scene.add(player);
+player.add(camera);
+
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true;
-renderer.xr.setReferenceSpaceType('local-floor');
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.prepend(renderer.domElement);
 
+renderer.xr.setReferenceSpaceType('local-floor');
 const vrButton = VRButton.createButton(renderer);
 vrButton.id = 'VRButton';
 document.body.appendChild(vrButton);
@@ -189,24 +193,39 @@ function fire(controller) {
   actuator?.pulse?.(0.35, 35).catch?.(() => {});
 }
 
+const xrControllers = [];
 for (let i = 0; i < 2; i++) {
   const controller = renderer.xr.getController(i);
+  const grip = renderer.xr.getControllerGrip(i);
+  controller.visible = false;
+  grip.visible = false;
+
   controller.addEventListener('selectstart', () => fire(controller));
   controller.addEventListener('connected', (event) => {
     controller.userData.inputSource = event.data;
+    controller.visible = true;
+    grip.visible = true;
     setStatus('controllers', 'Controllers: XR input connected', 'ok');
   });
   controller.addEventListener('disconnected', () => {
     controller.userData.inputSource = null;
+    controller.visible = false;
+    grip.visible = false;
     setStatus('controllers', 'Controllers: XR input disconnected', 'pending');
   });
 
   const handMarker = new THREE.Mesh(
-    new THREE.TorusGeometry(0.045, 0.012, 8, 20),
-    new THREE.MeshBasicMaterial({ color: i === 0 ? 0x68b7ff : 0xff79d1 })
+    new THREE.BoxGeometry(0.055, 0.095, 0.13),
+    new THREE.MeshStandardMaterial({
+      color: i === 0 ? 0x68b7ff : 0xff79d1,
+      emissive: i === 0 ? 0x153a66 : 0x641849,
+      emissiveIntensity: 0.8,
+      roughness: 0.35,
+      metalness: 0.25
+    })
   );
-  handMarker.rotation.x = Math.PI / 2;
-  controller.add(handMarker);
+  handMarker.position.z = -0.02;
+  grip.add(handMarker);
 
   const lineGeometry = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)
@@ -217,7 +236,9 @@ for (let i = 0; i < 2; i++) {
   );
   line.scale.z = 6;
   controller.add(line);
-  scene.add(controller);
+
+  player.add(controller, grip);
+  xrControllers.push({ controller, grip });
 }
 
 renderer.xr.addEventListener('sessionstart', () => {
@@ -225,6 +246,10 @@ renderer.xr.addEventListener('sessionstart', () => {
 });
 
 renderer.xr.addEventListener('sessionend', () => {
+  for (const { controller, grip } of xrControllers) {
+    controller.visible = false;
+    grip.visible = false;
+  }
   setStatus('controllers', 'Controllers: waiting for XR session', 'pending');
 });
 
