@@ -3,6 +3,35 @@ import assert from 'node:assert/strict';
 import { createSeedMachine, extendFromNode, machineFingerprint, validateMachine } from '../src/core/machine-document.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
 
+const normalize = (v) => {
+  const len = Math.hypot(...v);
+  return v.map((value) => value / len);
+};
+
+function rotatePositiveX([x, y, z, w]) {
+  // q * (1,0,0) * q^-1, expanded for a unit quaternion.
+  return [
+    1 - 2 * (y * y + z * z),
+    2 * (x * y + w * z),
+    2 * (x * z - w * y),
+  ];
+}
+
+function singleBeamDocument(a, b) {
+  return {
+    version: 1,
+    revision: 0,
+    nextIds: { node: 3, beam: 2 },
+    nodes: [
+      { id: 'n1', position: a },
+      { id: 'n2', position: b },
+    ],
+    beams: [
+      { id: 'b1', a: 'n1', b: 'n2', thickness: 0.12, density: 420 },
+    ],
+  };
+}
+
 test('seed machine is valid and compiles to one rigid island', () => {
   const document = createSeedMachine();
   assert.deepEqual(validateMachine(document), []);
@@ -47,4 +76,27 @@ test('compileMachine does not mutate authored truth', () => {
   const plan = compileMachine(document);
   assert.equal(plan.sourceFingerprint, before);
   assert.equal(machineFingerprint(document), before);
+});
+
+test('authored validation rejects geometrically degenerate structural beams', () => {
+  const document = singleBeamDocument([0, 1, 0], [0.01, 1, 0]);
+  assert.match(validateMachine(document).join('\n'), /shorter than/);
+  assert.throws(() => compileMachine(document), /shorter than/);
+});
+
+test('compiled beam rotation maps local +X onto authored direction', () => {
+  const cases = [
+    [[0, 0, 0], [1, 0, 0]],
+    [[0, 0, 0], [-1, 0, 0]],
+    [[0, 0, 0], [0, 1, 0]],
+    [[0.3, -0.2, 0.4], [1.1, 0.8, -0.7]],
+  ];
+
+  for (const [a, b] of cases) {
+    const beam = compileMachine(singleBeamDocument(a, b)).islands[0].beams[0];
+    const actual = normalize(rotatePositiveX(beam.localRotation));
+    const expected = normalize([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
+    const dot = actual[0] * expected[0] + actual[1] * expected[1] + actual[2] * expected[2];
+    assert.ok(dot > 0.999999, `compiled axis diverged from authored direction: dot=${dot}`);
+  }
 });
