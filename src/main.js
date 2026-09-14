@@ -1,23 +1,30 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { PhysicsSystem } from './physics.js';
 import './style.css';
 
-const BUILD_LABEL = 'F0-Q3';
+const BUILD_LABEL = 'F1-A1';
+const MAX_CORE_HEALTH = 6;
+const TOTAL_WAVES = 3;
 
 const app = document.querySelector('#app');
 app.innerHTML = `
   <div class="hud">
     <section class="panel">
       <p class="eyebrow">WebXR Lab · ${BUILD_LABEL}</p>
-      <h1>Quest presence gate</h1>
-      <p class="lead">Desktop is only a preview. The real pass condition is physical Quest 2 tracking + Touch controller trigger + spatial target interaction.</p>
+      <h1>Reactor Defense</h1>
+      <p class="lead">F0 passed on physical Quest 2. F1 adds Rapier 3D physics, grab/throw, dual blasters and a short drone-defense loop.</p>
       <div class="status" id="status"></div>
+      <p class="controls">Trigger: fire · Grip/squeeze: grab + throw nearby physics objects</p>
     </section>
-    <div class="game-readout"><strong id="score">0 / 8</strong><span>targets hit</span></div>
+    <div class="game-readout">
+      <strong id="score">0</strong><span id="readoutLabel">score · wave 0 / 3</span>
+    </div>
   </div>`;
 
 const statusEl = document.querySelector('#status');
 const scoreEl = document.querySelector('#score');
+const readoutLabelEl = document.querySelector('#readoutLabel');
 const statusRows = new Map();
 
 function setStatus(key, label, state = 'pending') {
@@ -33,43 +40,16 @@ function setStatus(key, label, state = 'pending') {
   row.querySelector('span:last-child').textContent = label;
 }
 
-let immersiveVrSupported = null;
-let xrTriggerEvents = 0;
-const connectedControllerHands = new Map();
-
-function refreshControllerStatus() {
-  const hands = [...connectedControllerHands.values()];
-  const hasLeft = hands.includes('left');
-  const hasRight = hands.includes('right');
-
-  if (hasLeft && hasRight) {
-    setStatus('controllers', 'Controllers: left + right connected', 'ok');
-    return;
-  }
-  if (hands.length > 0) {
-    const labels = hands.map((hand) => hand === 'none' ? 'unhanded' : hand).join(' + ');
-    setStatus('controllers', `Controllers: ${labels} connected; waiting for second`, 'pending');
-    return;
-  }
-  setStatus('controllers', 'Controllers: waiting for XR session');
-}
-
-function refreshInputStatus() {
-  setStatus(
-    'input',
-    `XR trigger/select events: ${xrTriggerEvents}`,
-    xrTriggerEvents > 0 ? 'ok' : 'pending'
-  );
-}
-
-setStatus('secure', window.isSecureContext ? 'Secure context: yes' : 'Secure context: no (XR will be blocked)', window.isSecureContext ? 'ok' : 'bad');
+setStatus('secure', window.isSecureContext ? 'Secure context: yes' : 'Secure context: no', window.isSecureContext ? 'ok' : 'bad');
 setStatus('webxr', 'WebXR API: checking…');
 setStatus('vr', 'immersive-vr: checking…');
-refreshControllerStatus();
-refreshInputStatus();
+setStatus('physics', 'Rapier 3D: loading…');
+setStatus('controllers', 'Controllers: waiting for XR session');
+setStatus('game', 'Game: preparing F1 arena…');
 
+let immersiveVrSupported = null;
 if (!('xr' in navigator)) {
-  setStatus('webxr', 'WebXR API: unavailable in this browser', 'bad');
+  setStatus('webxr', 'WebXR API: unavailable', 'bad');
   setStatus('vr', 'immersive-vr: unavailable', 'bad');
 } else {
   setStatus('webxr', 'WebXR API: available', 'ok');
@@ -79,311 +59,745 @@ if (!('xr' in navigator)) {
   }).catch(() => setStatus('vr', 'immersive-vr: support check failed', 'bad'));
 }
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x070b14);
-scene.fog = new THREE.Fog(0x070b14, 8, 24);
+boot().catch((error) => {
+  console.error(error);
+  setStatus('game', `Boot failed: ${error?.message ?? error}`, 'bad');
+});
 
-const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 100);
-camera.position.set(0, 1.65, 3.4);
-const desktopCameraState = {
-  position: camera.position.clone(),
-  quaternion: camera.quaternion.clone(),
-  scale: camera.scale.clone()
-};
+async function boot() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050914);
+  scene.fog = new THREE.Fog(0x050914, 10, 25);
 
-const player = new THREE.Group();
-scene.add(player);
-player.add(camera);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.xr.enabled = true;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-app.prepend(renderer.domElement);
-
-renderer.xr.setReferenceSpaceType('local-floor');
-const vrButton = VRButton.createButton(renderer);
-vrButton.id = 'VRButton';
-document.body.appendChild(vrButton);
-
-scene.add(new THREE.HemisphereLight(0xa8c8ff, 0x172032, 1.8));
-const key = new THREE.DirectionalLight(0xffffff, 2.6);
-key.position.set(3, 6, 2);
-key.castShadow = true;
-scene.add(key);
-
-const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(7, 64),
-  new THREE.MeshStandardMaterial({ color: 0x111927, roughness: 0.92, metalness: 0.05 })
-);
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-scene.add(floor);
-
-const ring = new THREE.Mesh(
-  new THREE.RingGeometry(1.25, 1.29, 96),
-  new THREE.MeshBasicMaterial({ color: 0x3f7cff, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
-);
-ring.rotation.x = -Math.PI / 2;
-ring.position.y = 0.006;
-scene.add(ring);
-
-const backWall = new THREE.Mesh(
-  new THREE.BoxGeometry(8, 4, 0.15),
-  new THREE.MeshStandardMaterial({ color: 0x0d1320, roughness: 0.8, metalness: 0.2 })
-);
-backWall.position.set(0, 2, -5.1);
-backWall.receiveShadow = true;
-scene.add(backWall);
-
-const targets = [];
-const targetGroup = new THREE.Group();
-scene.add(targetGroup);
-
-const targetLayout = [
-  [-2.2, 1.15, -3.1], [-0.75, 1.8, -3.7], [0.75, 1.25, -3.9], [2.2, 2.05, -3.2],
-  [-1.7, 2.55, -4.55], [-0.25, 2.9, -4.7], [1.3, 2.55, -4.55], [0.15, 0.78, -3.2]
-];
-
-for (let i = 0; i < targetLayout.length; i++) {
-  const target = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(0.27, 2),
-    new THREE.MeshStandardMaterial({ color: 0x58d7ff, emissive: 0x0a5c87, emissiveIntensity: 1.6, roughness: 0.25, metalness: 0.25 })
-  );
-  target.position.fromArray(targetLayout[i]);
-  target.castShadow = true;
-  target.userData = {
-    active: true,
-    index: i,
-    basePosition: target.position.clone(),
-    hideTimer: null
+  const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.05, 100);
+  camera.position.set(0, 1.65, 3.8);
+  const desktopCameraState = {
+    position: camera.position.clone(),
+    quaternion: camera.quaternion.clone(),
+    scale: camera.scale.clone()
   };
-  targets.push(target);
-  targetGroup.add(target);
-}
 
-const progressPips = [];
-for (let i = 0; i < targets.length; i++) {
-  const pip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.14, 0.04, 0.04),
-    new THREE.MeshBasicMaterial({ color: 0x58d7ff })
+  const player = new THREE.Group();
+  scene.add(player);
+  player.add(camera);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.xr.enabled = true;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  app.prepend(renderer.domElement);
+
+  renderer.xr.setReferenceSpaceType('local-floor');
+  const vrButton = VRButton.createButton(renderer);
+  vrButton.id = 'VRButton';
+  document.body.appendChild(vrButton);
+
+  const physics = await PhysicsSystem.create();
+  setStatus('physics', 'Rapier 3D: ready', 'ok');
+
+  scene.add(new THREE.HemisphereLight(0x9ec8ff, 0x0c1322, 1.65));
+  const key = new THREE.DirectionalLight(0xe7f5ff, 2.1);
+  key.position.set(3.5, 7, 2.5);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.camera.left = -7;
+  key.shadow.camera.right = 7;
+  key.shadow.camera.top = 7;
+  key.shadow.camera.bottom = -7;
+  scene.add(key);
+
+  const accentLight = new THREE.PointLight(0x39c9ff, 4.5, 8, 2);
+  accentLight.position.set(0, 1.2, -2.3);
+  scene.add(accentLight);
+
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(6, 64),
+    new THREE.MeshStandardMaterial({ color: 0x111a2a, roughness: 0.82, metalness: 0.18 })
   );
-  pip.position.set((i - (targets.length - 1) / 2) * 0.19, 3.35, -4.85);
-  progressPips.push(pip);
-  scene.add(pip);
-}
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+  physics.addFixedBox({ x: 0, y: -0.16, z: -1 }, { x: 6, y: 0.16, z: 6 }, { friction: 0.95 });
 
-const projectileGeometry = new THREE.SphereGeometry(0.035, 12, 8);
-const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xa9f2ff });
-const projectiles = [];
-const raycaster = new THREE.Raycaster();
-const tempMatrix = new THREE.Matrix4();
-const tempDirection = new THREE.Vector3();
-const tempOrigin = new THREE.Vector3();
-let score = 0;
-let lastRoundComplete = 0;
+  const arenaRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.15, 1.22, 96),
+    new THREE.MeshBasicMaterial({ color: 0x286fff, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
+  );
+  arenaRing.rotation.x = -Math.PI / 2;
+  arenaRing.position.y = 0.008;
+  scene.add(arenaRing);
 
-function clearProjectiles() {
-  for (const projectile of projectiles) scene.remove(projectile);
-  projectiles.length = 0;
-}
+  const backWall = new THREE.Mesh(
+    new THREE.BoxGeometry(11, 4.5, 0.18),
+    new THREE.MeshStandardMaterial({ color: 0x0d1422, roughness: 0.72, metalness: 0.28 })
+  );
+  backWall.position.set(0, 2.25, -7.2);
+  backWall.receiveShadow = true;
+  scene.add(backWall);
+  physics.addFixedBox({ x: 0, y: 2.25, z: -7.2 }, { x: 5.5, y: 2.25, z: 0.09 });
 
-function resetRound() {
-  score = 0;
-  lastRoundComplete = 0;
-  scoreEl.textContent = `0 / ${targets.length}`;
-  for (const target of targets) {
-    if (target.userData.hideTimer !== null) {
-      clearTimeout(target.userData.hideTimer);
-      target.userData.hideTimer = null;
-    }
-    target.visible = true;
-    target.scale.setScalar(1);
-    target.position.copy(target.userData.basePosition);
-    target.userData.active = true;
+  for (const x of [-5.5, 5.5]) {
+    const wall = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 3.2, 8.5),
+      new THREE.MeshStandardMaterial({ color: 0x0b111e, roughness: 0.8, metalness: 0.18 })
+    );
+    wall.position.set(x, 1.6, -2.9);
+    wall.receiveShadow = true;
+    scene.add(wall);
+    physics.addFixedBox({ x, y: 1.6, z: -2.9 }, { x: 0.09, y: 1.6, z: 4.25 });
   }
-  for (const pip of progressPips) {
-    pip.material.color.setHex(0x58d7ff);
-    pip.scale.setScalar(1);
-  }
-}
 
-function hitTarget(target) {
-  if (!target.userData.active) return;
-  target.userData.active = false;
-  score += 1;
-  scoreEl.textContent = `${score} / ${targets.length}`;
-  const pip = progressPips[target.userData.index];
-  if (pip) {
-    pip.material.color.setHex(0x173147);
-    pip.scale.setScalar(0.75);
-  }
-  target.scale.setScalar(1.45);
-  target.userData.hideTimer = setTimeout(() => {
-    target.visible = false;
-    target.userData.hideTimer = null;
-  }, 70);
-  if (score === targets.length) lastRoundComplete = performance.now();
-}
+  const core = new THREE.Group();
+  core.position.set(0, 0.95, -2.65);
+  scene.add(core);
 
-function fire(controller) {
-  xrTriggerEvents += 1;
-  refreshInputStatus();
-
-  // Three updates the controller's local matrix from the select event XRFrame,
-  // but world matrices are normally refreshed by scene traversal. Force it here
-  // so the shot uses the event-time pose rather than a potentially stale frame.
-  controller.updateWorldMatrix(true, false);
-  tempMatrix.identity().extractRotation(controller.matrixWorld);
-  tempDirection.set(0, 0, -1).applyMatrix4(tempMatrix).normalize();
-  tempOrigin.setFromMatrixPosition(controller.matrixWorld);
-
-  raycaster.set(tempOrigin, tempDirection);
-  raycaster.far = 30;
-  const hit = raycaster.intersectObjects(targets.filter((target) => target.userData.active), false)[0];
-  if (hit) hitTarget(hit.object);
-
-  const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
-  projectile.position.copy(tempOrigin);
-  projectile.userData.velocity = tempDirection.clone().multiplyScalar(9);
-  projectile.userData.life = 1.25;
-  scene.add(projectile);
-  projectiles.push(projectile);
-
-  try {
-    const source = controller.userData.inputSource;
-    const actuator = source?.gamepad?.hapticActuators?.[0];
-    const pulseResult = actuator?.pulse?.(0.35, 35);
-    pulseResult?.catch?.(() => {});
-  } catch {
-    // Haptics are optional and must never break the interaction path.
-  }
-}
-
-const xrControllers = [];
-for (let i = 0; i < 2; i++) {
-  const controller = renderer.xr.getController(i);
-  const grip = renderer.xr.getControllerGrip(i);
-  controller.visible = false;
-  grip.visible = false;
-
-  controller.addEventListener('selectstart', () => fire(controller));
-  controller.addEventListener('connected', (event) => {
-    controller.userData.inputSource = event.data;
-    connectedControllerHands.set(i, event.data.handedness || 'none');
-    refreshControllerStatus();
-  });
-  controller.addEventListener('disconnected', () => {
-    controller.userData.inputSource = null;
-    connectedControllerHands.delete(i);
-    refreshControllerStatus();
-  });
-
-  const handMarker = new THREE.Mesh(
-    new THREE.BoxGeometry(0.055, 0.095, 0.13),
+  const coreShell = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.42, 3),
     new THREE.MeshStandardMaterial({
-      color: i === 0 ? 0x68b7ff : 0xff79d1,
-      emissive: i === 0 ? 0x153a66 : 0x641849,
-      emissiveIntensity: 0.8,
-      roughness: 0.35,
-      metalness: 0.25
+      color: 0x4ae7ff,
+      emissive: 0x0b95be,
+      emissiveIntensity: 2.8,
+      roughness: 0.16,
+      metalness: 0.42
     })
   );
-  handMarker.position.z = -0.02;
-  grip.add(handMarker);
+  coreShell.castShadow = true;
+  core.add(coreShell);
 
-  const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)
-  ]);
-  const line = new THREE.Line(
-    lineGeometry,
-    new THREE.LineBasicMaterial({ color: 0x9cecff, transparent: true, opacity: 0.68 })
+  const coreRingA = new THREE.Mesh(
+    new THREE.TorusGeometry(0.68, 0.035, 12, 64),
+    new THREE.MeshBasicMaterial({ color: 0x69eaff, transparent: true, opacity: 0.75 })
   );
-  line.scale.z = 6;
-  controller.add(line);
+  core.add(coreRingA);
+  const coreRingB = coreRingA.clone();
+  coreRingB.rotation.x = Math.PI / 2;
+  core.add(coreRingB);
 
-  player.add(controller, grip);
-  xrControllers.push({ controller, grip });
-}
-
-renderer.xr.addEventListener('sessionstart', () => {
-  xrTriggerEvents = 0;
-  clearProjectiles();
-  resetRound();
-  refreshControllerStatus();
-  refreshInputStatus();
-  setStatus('vr', 'immersive-vr: session active', 'ok');
-});
-
-renderer.xr.addEventListener('sessionend', () => {
-  for (const { controller, grip } of xrControllers) {
-    controller.visible = false;
-    grip.visible = false;
-  }
-  connectedControllerHands.clear();
-  clearProjectiles();
-  refreshControllerStatus();
-
-  camera.position.copy(desktopCameraState.position);
-  camera.quaternion.copy(desktopCameraState.quaternion);
-  camera.scale.copy(desktopCameraState.scale);
-  camera.updateMatrix();
-  camera.updateMatrixWorld(true);
-
-  setStatus(
-    'vr',
-    immersiveVrSupported === true ? 'immersive-vr: supported (session ended)' : 'immersive-vr: session ended',
-    immersiveVrSupported === false ? 'bad' : 'ok'
-  );
-});
-
-renderer.domElement.addEventListener('pointerdown', (event) => {
-  if (renderer.xr.isPresenting) return;
-  const rect = renderer.domElement.getBoundingClientRect();
-  const pointer = new THREE.Vector2(
-    ((event.clientX - rect.left) / rect.width) * 2 - 1,
-    -((event.clientY - rect.top) / rect.height) * 2 + 1
-  );
-  raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObjects(targets.filter((target) => target.userData.active), false)[0];
-  if (hit) hitTarget(hit.object);
-});
-
-const clock = new THREE.Clock();
-function animate() {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  const t = performance.now() * 0.001;
-
-  for (const target of targets) {
-    if (!target.userData.active) continue;
-    target.rotation.x += dt * 0.75;
-    target.rotation.y += dt * 1.1;
-    target.position.y = target.userData.basePosition.y + Math.sin(t * 1.8 + target.userData.index) * 0.07;
+  const coreHealthPips = [];
+  for (let i = 0; i < MAX_CORE_HEALTH; i++) {
+    const pip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.06, 0.05),
+      new THREE.MeshBasicMaterial({ color: 0x62f4c8 })
+    );
+    pip.position.set((i - (MAX_CORE_HEALTH - 1) / 2) * 0.19, 0.78, 0);
+    core.add(pip);
+    coreHealthPips.push(pip);
   }
 
-  for (let i = projectiles.length - 1; i >= 0; i--) {
-    const projectile = projectiles[i];
-    projectile.position.addScaledVector(projectile.userData.velocity, dt);
-    projectile.userData.life -= dt;
-    if (projectile.userData.life <= 0) {
-      scene.remove(projectile);
-      projectiles.splice(i, 1);
+  const wavePips = [];
+  for (let i = 0; i < TOTAL_WAVES; i++) {
+    const pip = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.08),
+      new THREE.MeshBasicMaterial({ color: 0x24425f })
+    );
+    pip.position.set((i - 1) * 0.24, 0.98, 0);
+    core.add(pip);
+    wavePips.push(pip);
+  }
+
+  const physicsShootables = [];
+  const crateMaterial = new THREE.MeshStandardMaterial({
+    color: 0x377da6,
+    emissive: 0x071b2c,
+    emissiveIntensity: 0.75,
+    roughness: 0.48,
+    metalness: 0.48
+  });
+  const orbMaterial = new THREE.MeshStandardMaterial({
+    color: 0xf0a94f,
+    emissive: 0x7d3305,
+    emissiveIntensity: 1.55,
+    roughness: 0.28,
+    metalness: 0.2
+  });
+
+  function createCrate(x, y, z, scale = 0.46) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(scale, scale, scale), crateMaterial.clone());
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    const entry = physics.addDynamicBox(mesh, { x: scale / 2, y: scale / 2, z: scale / 2 }, {
+      density: 1.25,
+      restitution: 0.12,
+      friction: 0.78,
+      kind: 'crate'
+    });
+    mesh.userData.physicsEntry = entry;
+    physicsShootables.push(mesh);
+    return entry;
+  }
+
+  function createEnergyOrb(x, y, z, radius = 0.18) {
+    const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 2), orbMaterial.clone());
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    scene.add(mesh);
+    const entry = physics.addDynamicBall(mesh, radius, {
+      density: 0.7,
+      restitution: 0.52,
+      friction: 0.45,
+      kind: 'energy-orb'
+    });
+    mesh.userData.physicsEntry = entry;
+    physicsShootables.push(mesh);
+    return entry;
+  }
+
+  const cratePositions = [
+    [-1.55, 0.25, -1.1], [-2.05, 0.25, -1.55], [-2.55, 0.25, -2.0],
+    [1.65, 0.25, -1.25], [2.1, 0.25, -1.75], [2.55, 0.25, -2.15],
+    [2.25, 0.72, -2.15], [-2.25, 0.72, -2.1]
+  ];
+  for (const [x, y, z] of cratePositions) createCrate(x, y, z);
+  createEnergyOrb(-1.05, 0.22, -1.55);
+  createEnergyOrb(1.0, 0.22, -1.75);
+  createEnergyOrb(0.65, 0.22, -1.2);
+
+  const raycaster = new THREE.Raycaster();
+  const tempMatrix = new THREE.Matrix4();
+  const tempDirection = new THREE.Vector3();
+  const tempOrigin = new THREE.Vector3();
+  const tempPosition = new THREE.Vector3();
+  const tempQuaternion = new THREE.Quaternion();
+  const tempScale = new THREE.Vector3();
+  const desiredGrabMatrix = new THREE.Matrix4();
+  const projectiles = [];
+  const enemyBolts = [];
+  const effects = [];
+  const drones = [];
+  const droneRoots = [];
+  const controllers = [];
+  const connectedHands = new Map();
+
+  let score = 0;
+  let coreHealth = MAX_CORE_HEALTH;
+  let currentWave = 0;
+  let waveSpawnRemaining = 0;
+  let waveSpawnTimer = 0;
+  let nextWaveTimer = 0;
+  let gameState = 'ready';
+  let desktopStarted = false;
+  let droneId = 0;
+
+  function updateReadout() {
+    scoreEl.textContent = String(score);
+    readoutLabelEl.textContent = `score · wave ${currentWave} / ${TOTAL_WAVES}`;
+  }
+
+  function refreshControllerStatus() {
+    const hands = [...connectedHands.values()];
+    if (hands.includes('left') && hands.includes('right')) {
+      setStatus('controllers', 'Controllers: left + right connected', 'ok');
+    } else if (hands.length > 0) {
+      setStatus('controllers', `Controllers: ${hands.join(' + ')}; waiting for second`, 'pending');
+    } else {
+      setStatus('controllers', 'Controllers: waiting for XR session');
     }
   }
 
-  if (score === targets.length && lastRoundComplete && performance.now() - lastRoundComplete > 1600) {
-    resetRound();
+  function haptic(controllerState, intensity = 0.25, duration = 35) {
+    try {
+      const source = controllerState.controller.userData.inputSource;
+      const actuator = source?.gamepad?.hapticActuators?.[0];
+      const result = actuator?.pulse?.(intensity, duration);
+      result?.catch?.(() => {});
+    } catch {
+      // Optional feedback only.
+    }
   }
 
-  renderer.render(scene, camera);
-}
-renderer.setAnimationLoop(animate);
+  function spawnPulse(origin, direction, color = 0x9ff4ff, speed = 14) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.035, 10, 7),
+      new THREE.MeshBasicMaterial({ color })
+    );
+    mesh.position.copy(origin);
+    scene.add(mesh);
+    projectiles.push({ mesh, velocity: direction.clone().multiplyScalar(speed), life: 0.7 });
+  }
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+  function spawnBurst(position, color = 0x67e5ff, count = 10) {
+    for (let i = 0; i < count; i++) {
+      const mesh = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.035 + Math.random() * 0.025),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 })
+      );
+      mesh.position.copy(position);
+      scene.add(mesh);
+      const velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 2.4,
+        Math.random() * 2.1,
+        (Math.random() - 0.5) * 2.4
+      );
+      effects.push({ mesh, velocity, life: 0.42 + Math.random() * 0.25 });
+    }
+  }
+
+  function makeDrone(isElite = false) {
+    const root = new THREE.Group();
+    const radius = isElite ? 0.48 : 0.31;
+    const body = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(radius, 2),
+      new THREE.MeshStandardMaterial({
+        color: isElite ? 0xff884d : 0xff4f72,
+        emissive: isElite ? 0x8e2507 : 0x680b27,
+        emissiveIntensity: 2.2,
+        roughness: 0.28,
+        metalness: 0.46
+      })
+    );
+    body.castShadow = true;
+    root.add(body);
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(radius * 1.35, 0.035, 8, 32),
+      new THREE.MeshBasicMaterial({ color: isElite ? 0xffc15c : 0xff6684, transparent: true, opacity: 0.75 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    root.add(ring);
+
+    const spawnX = (Math.random() - 0.5) * 8.2;
+    const spawnY = 1.05 + Math.random() * 2.05;
+    const spawnZ = -7 + Math.random() * -2.2;
+    root.position.set(spawnX, spawnY, spawnZ);
+    scene.add(root);
+
+    const drone = {
+      id: ++droneId,
+      root,
+      body,
+      ring,
+      radius,
+      hp: isElite ? 4 : 1,
+      maxHp: isElite ? 4 : 1,
+      speed: isElite ? 0.58 : 0.72 + Math.random() * 0.24,
+      fireTimer: 1.2 + Math.random() * 1.9,
+      phase: Math.random() * Math.PI * 2,
+      dead: false,
+      elite: isElite
+    };
+    root.userData.drone = drone;
+    body.userData.drone = drone;
+    ring.userData.drone = drone;
+    drones.push(drone);
+    droneRoots.push(root);
+    return drone;
+  }
+
+  function removeDrone(drone) {
+    drone.dead = true;
+    scene.remove(drone.root);
+    const droneIndex = drones.indexOf(drone);
+    if (droneIndex >= 0) drones.splice(droneIndex, 1);
+    const rootIndex = droneRoots.indexOf(drone.root);
+    if (rootIndex >= 0) droneRoots.splice(rootIndex, 1);
+  }
+
+  function damageDrone(drone, amount, impactPosition) {
+    if (!drone || drone.dead) return;
+    drone.hp -= amount;
+    drone.body.material.emissiveIntensity = 5.5;
+    setTimeout(() => {
+      if (!drone.dead) drone.body.material.emissiveIntensity = 2.2;
+    }, 70);
+    spawnBurst(impactPosition ?? drone.root.position, drone.elite ? 0xffb45e : 0xff5b83, drone.elite ? 14 : 9);
+    if (drone.hp <= 0) {
+      score += drone.elite ? 500 : 120;
+      updateReadout();
+      spawnBurst(drone.root.position, drone.elite ? 0xffbb5d : 0xff4b78, drone.elite ? 28 : 17);
+      removeDrone(drone);
+    }
+  }
+
+  function damageCore(amount = 1) {
+    if (gameState !== 'playing') return;
+    coreHealth = Math.max(0, coreHealth - amount);
+    for (let i = 0; i < coreHealthPips.length; i++) {
+      coreHealthPips[i].material.color.setHex(i < coreHealth ? 0x62f4c8 : 0x382033);
+      coreHealthPips[i].scale.setScalar(i < coreHealth ? 1 : 0.72);
+    }
+    accentLight.intensity = 8;
+    setTimeout(() => { accentLight.intensity = 4.5; }, 90);
+    if (coreHealth <= 0) {
+      gameState = 'failed';
+      setStatus('game', 'Game: reactor lost — resetting…', 'bad');
+      nextWaveTimer = 3.2;
+    }
+  }
+
+  function clearCombatObjects() {
+    for (const drone of [...drones]) removeDrone(drone);
+    for (const bolt of enemyBolts) scene.remove(bolt.mesh);
+    enemyBolts.length = 0;
+    for (const pulse of projectiles) scene.remove(pulse.mesh);
+    projectiles.length = 0;
+  }
+
+  function resetGame(startImmediately = true) {
+    clearCombatObjects();
+    score = 0;
+    coreHealth = MAX_CORE_HEALTH;
+    currentWave = 0;
+    waveSpawnRemaining = 0;
+    waveSpawnTimer = 0;
+    nextWaveTimer = startImmediately ? 0.8 : 0;
+    gameState = startImmediately ? 'between-waves' : 'ready';
+    for (const pip of coreHealthPips) {
+      pip.material.color.setHex(0x62f4c8);
+      pip.scale.setScalar(1);
+    }
+    for (const pip of wavePips) pip.material.color.setHex(0x24425f);
+    setStatus('game', startImmediately ? 'Game: reactor online — incoming wave', 'ok' : 'Game: ready', 'ok');
+    updateReadout();
+  }
+
+  function startWave(wave) {
+    currentWave = wave;
+    gameState = 'playing';
+    wavePips[wave - 1]?.material.color.setHex(0x5ee8ff);
+    waveSpawnRemaining = 2 + wave * 2;
+    waveSpawnTimer = 0.35;
+    setStatus('game', `Game: wave ${wave} active`, 'ok');
+    updateReadout();
+  }
+
+  function finishWaveIfReady() {
+    if (gameState !== 'playing' || waveSpawnRemaining > 0 || drones.length > 0) return;
+    if (currentWave >= TOTAL_WAVES) {
+      gameState = 'won';
+      setStatus('game', 'Game: reactor defended — victory', 'ok');
+      for (const pip of wavePips) pip.material.color.setHex(0x76ffc6);
+      nextWaveTimer = 4.5;
+    } else {
+      gameState = 'between-waves';
+      wavePips[currentWave - 1]?.material.color.setHex(0x76ffc6);
+      nextWaveTimer = 2.0;
+      setStatus('game', `Game: wave ${currentWave} clear`, 'ok');
+    }
+  }
+
+  function spawnEnemyBolt(drone) {
+    if (drone.dead || gameState !== 'playing') return;
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(drone.elite ? 0.075 : 0.055, 10, 8),
+      new THREE.MeshBasicMaterial({ color: drone.elite ? 0xffb33e : 0xff395f })
+    );
+    mesh.position.copy(drone.root.position);
+    scene.add(mesh);
+    const direction = core.getWorldPosition(new THREE.Vector3()).sub(mesh.position).normalize();
+    enemyBolts.push({ mesh, velocity: direction.multiplyScalar(drone.elite ? 2.5 : 2.05), life: 4.5 });
+  }
+
+  function findHitOwner(object) {
+    let node = object;
+    while (node) {
+      if (node.userData?.drone) return { type: 'drone', value: node.userData.drone };
+      if (node.userData?.physicsEntry) return { type: 'physics', value: node.userData.physicsEntry };
+      node = node.parent;
+    }
+    return null;
+  }
+
+  function fire(controllerState) {
+    controllerState.controller.updateWorldMatrix(true, false);
+    tempMatrix.identity().extractRotation(controllerState.controller.matrixWorld);
+    tempDirection.set(0, 0, -1).applyMatrix4(tempMatrix).normalize();
+    tempOrigin.setFromMatrixPosition(controllerState.controller.matrixWorld);
+    spawnPulse(tempOrigin, tempDirection);
+
+    raycaster.set(tempOrigin, tempDirection);
+    raycaster.far = 30;
+    const candidates = [...droneRoots, ...physicsShootables];
+    const hit = raycaster.intersectObjects(candidates, true)[0];
+    if (hit) {
+      const owner = findHitOwner(hit.object);
+      if (owner?.type === 'drone') {
+        damageDrone(owner.value, 1, hit.point);
+        haptic(controllerState, 0.48, 45);
+      } else if (owner?.type === 'physics') {
+        physics.applyImpulse(owner.value, tempDirection.clone().multiplyScalar(owner.value.kind === 'energy-orb' ? 1.1 : 1.8));
+        spawnBurst(hit.point, 0x7feaff, 5);
+        haptic(controllerState, 0.22, 25);
+      }
+    } else {
+      haptic(controllerState, 0.12, 18);
+    }
+  }
+
+  function beginGrab(controllerState) {
+    if (controllerState.grab) return;
+    controllerState.grip.updateWorldMatrix(true, false);
+    tempOrigin.setFromMatrixPosition(controllerState.grip.matrixWorld);
+    const entry = physics.findNearestGrabbable(tempOrigin, 0.58);
+    if (!entry || !physics.beginGrab(entry, controllerState.index)) return;
+
+    entry.mesh.updateMatrixWorld(true);
+    const offset = new THREE.Matrix4().copy(controllerState.grip.matrixWorld).invert().multiply(entry.mesh.matrixWorld);
+    controllerState.grab = { entry, offset };
+    entry.mesh.material.emissiveIntensity = (entry.mesh.material.emissiveIntensity ?? 0) + 1.5;
+    haptic(controllerState, 0.35, 45);
+  }
+
+  function endGrab(controllerState) {
+    const grab = controllerState.grab;
+    if (!grab) return;
+    const grip = controllerState.grip;
+    physics.endGrab(
+      grab.entry,
+      grip.hasLinearVelocity ? grip.linearVelocity : null,
+      grip.hasAngularVelocity ? grip.angularVelocity : null
+    );
+    if (grab.entry.kind === 'crate') grab.entry.mesh.material.emissiveIntensity = 0.75;
+    if (grab.entry.kind === 'energy-orb') grab.entry.mesh.material.emissiveIntensity = 1.55;
+    controllerState.grab = null;
+    haptic(controllerState, 0.18, 25);
+  }
+
+  function updateGrab(controllerState) {
+    if (!controllerState.grab) return;
+    controllerState.grip.updateWorldMatrix(true, false);
+    desiredGrabMatrix.copy(controllerState.grip.matrixWorld).multiply(controllerState.grab.offset);
+    desiredGrabMatrix.decompose(tempPosition, tempQuaternion, tempScale);
+    physics.moveGrabbed(controllerState.grab.entry, tempPosition, tempQuaternion);
+  }
+
+  for (let i = 0; i < 2; i++) {
+    const controller = renderer.xr.getController(i);
+    const grip = renderer.xr.getControllerGrip(i);
+    const state = { index: i, controller, grip, grab: null, handedness: 'none' };
+
+    const handMarker = new THREE.Mesh(
+      new THREE.BoxGeometry(0.065, 0.105, 0.16),
+      new THREE.MeshStandardMaterial({
+        color: i === 0 ? 0x58b7ff : 0xff68c7,
+        emissive: i === 0 ? 0x123e70 : 0x6b154d,
+        emissiveIntensity: 1.1,
+        roughness: 0.3,
+        metalness: 0.45
+      })
+    );
+    handMarker.position.z = -0.025;
+    grip.add(handMarker);
+
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)
+    ]);
+    const line = new THREE.Line(
+      lineGeometry,
+      new THREE.LineBasicMaterial({ color: i === 0 ? 0x83d9ff : 0xff8ed7, transparent: true, opacity: 0.62 })
+    );
+    line.scale.z = 5.5;
+    controller.add(line);
+
+    controller.addEventListener('connected', (event) => {
+      controller.userData.inputSource = event.data;
+      state.handedness = event.data.handedness || 'none';
+      connectedHands.set(i, state.handedness);
+      refreshControllerStatus();
+    });
+    controller.addEventListener('disconnected', () => {
+      endGrab(state);
+      controller.userData.inputSource = null;
+      connectedHands.delete(i);
+      refreshControllerStatus();
+    });
+    controller.addEventListener('selectstart', () => fire(state));
+    controller.addEventListener('squeezestart', () => beginGrab(state));
+    controller.addEventListener('squeezeend', () => endGrab(state));
+
+    player.add(controller, grip);
+    controllers.push(state);
+  }
+
+  function updateDrones(dt, time) {
+    const coreWorld = core.getWorldPosition(new THREE.Vector3());
+    for (const drone of [...drones]) {
+      if (drone.dead) continue;
+      const toCore = tempPosition.copy(coreWorld).sub(drone.root.position);
+      const distance = toCore.length();
+      if (distance > 3.25) {
+        toCore.normalize();
+        drone.root.position.addScaledVector(toCore, drone.speed * dt);
+      } else {
+        drone.root.position.x += Math.sin(time * 1.7 + drone.phase) * dt * 0.22;
+        drone.root.position.y += Math.sin(time * 2.1 + drone.phase) * dt * 0.12;
+        drone.fireTimer -= dt;
+        if (drone.fireTimer <= 0) {
+          drone.fireTimer = drone.elite ? 1.35 : 2.2 + Math.random() * 1.25;
+          spawnEnemyBolt(drone);
+        }
+      }
+      drone.root.rotation.y += dt * (drone.elite ? 0.75 : 1.25);
+      drone.ring.rotation.z += dt * (drone.elite ? -1.9 : 2.7);
+    }
+  }
+
+  function updateEnemyBolts(dt) {
+    const coreWorld = core.getWorldPosition(new THREE.Vector3());
+    for (let i = enemyBolts.length - 1; i >= 0; i--) {
+      const bolt = enemyBolts[i];
+      bolt.mesh.position.addScaledVector(bolt.velocity, dt);
+      bolt.life -= dt;
+      if (bolt.mesh.position.distanceToSquared(coreWorld) < 0.28 * 0.28) {
+        spawnBurst(coreWorld, 0xff4366, 12);
+        damageCore(1);
+        scene.remove(bolt.mesh);
+        enemyBolts.splice(i, 1);
+      } else if (bolt.life <= 0) {
+        scene.remove(bolt.mesh);
+        enemyBolts.splice(i, 1);
+      }
+    }
+  }
+
+  function updateThrownObjectHits() {
+    for (const entry of physics.grabbables) {
+      if (entry.heldBy !== null || !entry.body.isDynamic()) continue;
+      const velocity = entry.body.linvel();
+      const speedSq = velocity.x * velocity.x + velocity.y * velocity.y + velocity.z * velocity.z;
+      if (speedSq < 3.2) continue;
+      const objectPosition = entry.mesh.position;
+      for (const drone of [...drones]) {
+        const threshold = drone.radius + (entry.kind === 'energy-orb' ? 0.2 : 0.34);
+        if (objectPosition.distanceToSquared(drone.root.position) < threshold * threshold) {
+          damageDrone(drone, entry.kind === 'energy-orb' ? 2 : 1, objectPosition);
+          physics.applyImpulse(entry, new THREE.Vector3(-velocity.x, Math.abs(velocity.y) * 0.25 + 0.6, -velocity.z).multiplyScalar(0.18));
+          break;
+        }
+      }
+    }
+  }
+
+  function updateWaveDirector(dt) {
+    if (gameState === 'playing') {
+      if (waveSpawnRemaining > 0) {
+        waveSpawnTimer -= dt;
+        if (waveSpawnTimer <= 0) {
+          const isElite = currentWave === TOTAL_WAVES && waveSpawnRemaining === 1;
+          makeDrone(isElite);
+          waveSpawnRemaining -= 1;
+          waveSpawnTimer = isElite ? 1.3 : 0.72;
+        }
+      }
+      finishWaveIfReady();
+      return;
+    }
+
+    if (gameState === 'between-waves') {
+      nextWaveTimer -= dt;
+      if (nextWaveTimer <= 0) startWave(currentWave + 1);
+      return;
+    }
+
+    if (gameState === 'won' || gameState === 'failed') {
+      nextWaveTimer -= dt;
+      if (nextWaveTimer <= 0) resetGame(true);
+    }
+  }
+
+  renderer.xr.addEventListener('sessionstart', () => {
+    connectedHands.clear();
+    refreshControllerStatus();
+    resetGame(true);
+    setStatus('vr', 'immersive-vr: session active', 'ok');
+  });
+
+  renderer.xr.addEventListener('sessionend', () => {
+    for (const state of controllers) endGrab(state);
+    connectedHands.clear();
+    refreshControllerStatus();
+    clearCombatObjects();
+    gameState = 'ready';
+    camera.position.copy(desktopCameraState.position);
+    camera.quaternion.copy(desktopCameraState.quaternion);
+    camera.scale.copy(desktopCameraState.scale);
+    camera.updateMatrix();
+    camera.updateMatrixWorld(true);
+    setStatus(
+      'vr',
+      immersiveVrSupported === true ? 'immersive-vr: supported (session ended)' : 'immersive-vr: session ended',
+      immersiveVrSupported === false ? 'bad' : 'ok'
+    );
+  });
+
+  renderer.domElement.addEventListener('pointerdown', (event) => {
+    if (renderer.xr.isPresenting) return;
+    if (!desktopStarted) {
+      desktopStarted = true;
+      resetGame(true);
+    }
+    const rect = renderer.domElement.getBoundingClientRect();
+    const pointer = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects([...droneRoots, ...physicsShootables], true)[0];
+    if (!hit) return;
+    const owner = findHitOwner(hit.object);
+    if (owner?.type === 'drone') damageDrone(owner.value, 1, hit.point);
+    if (owner?.type === 'physics') {
+      const direction = raycaster.ray.direction.clone();
+      physics.applyImpulse(owner.value, direction.multiplyScalar(1.8));
+    }
+  });
+
+  setStatus('game', 'Game: F1 arena ready', 'ok');
+  updateReadout();
+
+  const clock = new THREE.Clock();
+  function animate() {
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const time = performance.now() * 0.001;
+
+    for (const state of controllers) updateGrab(state);
+    physics.step(dt);
+
+    core.rotation.y += dt * 0.35;
+    coreShell.rotation.x += dt * 0.45;
+    coreShell.rotation.y += dt * 0.7;
+    coreRingA.rotation.z += dt * 0.85;
+    coreRingB.rotation.z -= dt * 0.7;
+
+    updateWaveDirector(dt);
+    updateDrones(dt, time);
+    updateEnemyBolts(dt);
+    updateThrownObjectHits();
+
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const pulse = projectiles[i];
+      pulse.mesh.position.addScaledVector(pulse.velocity, dt);
+      pulse.life -= dt;
+      if (pulse.life <= 0) {
+        scene.remove(pulse.mesh);
+        projectiles.splice(i, 1);
+      }
+    }
+
+    for (let i = effects.length - 1; i >= 0; i--) {
+      const effect = effects[i];
+      effect.mesh.position.addScaledVector(effect.velocity, dt);
+      effect.velocity.y -= 2.8 * dt;
+      effect.life -= dt;
+      effect.mesh.material.opacity = Math.max(0, effect.life * 2.1);
+      effect.mesh.scale.multiplyScalar(Math.max(0.93, 1 - dt * 1.8));
+      if (effect.life <= 0) {
+        scene.remove(effect.mesh);
+        effects.splice(i, 1);
+      }
+    }
+
+    renderer.render(scene, camera);
+  }
+  renderer.setAnimationLoop(animate);
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+}
