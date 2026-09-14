@@ -43,7 +43,13 @@ export class PhysicsSystem {
       .setFriction(options.friction ?? 0.75)
       .setRestitution(options.restitution ?? 0.16);
     this.world.createCollider(collider, body);
-    const entry = { mesh, body, kind: options.kind ?? 'box', grabbable: options.grabbable !== false };
+    const entry = {
+      mesh,
+      body,
+      kind: options.kind ?? 'box',
+      grabbable: options.grabbable !== false,
+      heldBy: null
+    };
     this.dynamicEntries.push(entry);
     if (entry.grabbable) this.grabbables.push(entry);
     return entry;
@@ -63,7 +69,13 @@ export class PhysicsSystem {
       .setFriction(options.friction ?? 0.55)
       .setRestitution(options.restitution ?? 0.45);
     this.world.createCollider(collider, body);
-    const entry = { mesh, body, kind: options.kind ?? 'ball', grabbable: options.grabbable !== false };
+    const entry = {
+      mesh,
+      body,
+      kind: options.kind ?? 'ball',
+      grabbable: options.grabbable !== false,
+      heldBy: null
+    };
     this.dynamicEntries.push(entry);
     if (entry.grabbable) this.grabbables.push(entry);
     return entry;
@@ -87,11 +99,11 @@ export class PhysicsSystem {
     }
   }
 
-  findNearestGrabbable(worldPosition, maxDistance = 0.48, excludedBody = null) {
+  findNearestGrabbable(worldPosition, maxDistance = 0.48) {
     let nearest = null;
     let nearestDistanceSq = maxDistance * maxDistance;
     for (const entry of this.grabbables) {
-      if (entry.body === excludedBody) continue;
+      if (entry.heldBy !== null) continue;
       const p = entry.body.translation();
       const dx = p.x - worldPosition.x;
       const dy = p.y - worldPosition.y;
@@ -105,11 +117,13 @@ export class PhysicsSystem {
     return nearest;
   }
 
-  beginGrab(entry) {
-    if (!entry) return;
+  beginGrab(entry, handIndex) {
+    if (!entry || entry.heldBy !== null) return false;
+    entry.heldBy = handIndex;
     entry.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
     entry.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     entry.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    return true;
   }
 
   moveGrabbed(entry, position, quaternion) {
@@ -120,6 +134,7 @@ export class PhysicsSystem {
 
   endGrab(entry, linearVelocity, angularVelocity) {
     if (!entry) return;
+    entry.heldBy = null;
     entry.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
     entry.body.setLinvel({
       x: linearVelocity?.x ?? 0,
