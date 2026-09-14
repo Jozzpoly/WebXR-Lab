@@ -6,8 +6,14 @@ import { RapierMachineRuntime } from '../src/runtime/rapier-runtime.js';
 
 const axisComponent = (v, axis) => v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2];
 
+function elevatedSeedMachine(heightOffset = 1.5) {
+  const document = structuredClone(createSeedMachine());
+  for (const node of document.nodes) node.position[1] += heightOffset;
+  return document;
+}
+
 test('powered wheel creates a real revolute motor consequence without authored mutation', async () => {
-  const document = attachPoweredWheel(createSeedMachine(), 'n1', {
+  const document = attachPoweredWheel(elevatedSeedMachine(), 'n1', {
     axis: [0, 0, 1],
     mountOffset: 0.18,
     motorVelocity: 8,
