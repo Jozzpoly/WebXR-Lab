@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attachPoweredWheel, createSeedMachine, extendFromNode, machineFingerprint, validateMachine } from '../src/core/machine-document.js';
+import { attachPoweredWheel, createSeedMachine, editPoweredWheel, extendFromNode, machineFingerprint, removeComponent, validateMachine } from '../src/core/machine-document.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
 
 const normalize = (v) => {
@@ -125,4 +125,43 @@ test('powered wheel requires a real structural host and non-zero axis', () => {
   isolated.nextIds.node = 4;
   assert.throws(() => attachPoweredWheel(isolated, 'n3'), /structural node/);
   assert.throws(() => attachPoweredWheel(createSeedMachine(), 'n1', { axis: [0, 0, 0] }), /non-zero/);
+});
+
+test('powered-wheel editing preserves identity, authored immutability and explicit intent', () => {
+  const original = attachPoweredWheel(createSeedMachine(), 'n1', { axis: [1, 0, 0], side: -1, motorVelocity: 8 });
+  const before = machineFingerprint(original);
+  const id = original.components[0].id;
+
+  const next = editPoweredWheel(original, id, { side: 1, motorVelocity: -8 });
+
+  assert.equal(machineFingerprint(original), before);
+  assert.equal(next.components[0].id, id);
+  assert.equal(next.components[0].side, 1);
+  assert.equal(next.components[0].motorVelocity, -8);
+  assert.equal(next.revision, original.revision + 1);
+  const compiled = compileMachine(next).components[0];
+  assert.equal(compiled.id, id);
+  assert.equal(compiled.motorVelocity, -8);
+});
+
+test('powered-wheel editing rejects fields that would silently change component identity or host', () => {
+  const document = attachPoweredWheel(createSeedMachine(), 'n1');
+  const id = document.components[0].id;
+  assert.throws(() => editPoweredWheel(document, id, { nodeId: 'n2' }), /unsupported powered-wheel edit field/);
+  assert.throws(() => editPoweredWheel(document, id, { side: 0 }), /invalid side/);
+});
+
+test('component removal is immutable and leaves authored ids monotonic', () => {
+  const original = attachPoweredWheel(createSeedMachine(), 'n1');
+  const before = machineFingerprint(original);
+  const removedId = original.components[0].id;
+  const next = removeComponent(original, removedId);
+
+  assert.equal(machineFingerprint(original), before);
+  assert.equal(next.components.length, 0);
+  assert.equal(next.revision, original.revision + 1);
+  assert.equal(next.nextIds.component, original.nextIds.component);
+
+  const readded = attachPoweredWheel(next, 'n2');
+  assert.notEqual(readded.components[0].id, removedId);
 });
