@@ -43,13 +43,7 @@ export class PhysicsSystem {
       .setFriction(options.friction ?? 0.75)
       .setRestitution(options.restitution ?? 0.16);
     this.world.createCollider(collider, body);
-    const entry = {
-      mesh,
-      body,
-      kind: options.kind ?? 'box',
-      grabbable: options.grabbable !== false,
-      heldBy: null
-    };
+    const entry = this.makeEntry(mesh, body, options.kind ?? 'box', options.grabbable !== false);
     this.dynamicEntries.push(entry);
     if (entry.grabbable) this.grabbables.push(entry);
     return entry;
@@ -69,16 +63,22 @@ export class PhysicsSystem {
       .setFriction(options.friction ?? 0.55)
       .setRestitution(options.restitution ?? 0.45);
     this.world.createCollider(collider, body);
-    const entry = {
-      mesh,
-      body,
-      kind: options.kind ?? 'ball',
-      grabbable: options.grabbable !== false,
-      heldBy: null
-    };
+    const entry = this.makeEntry(mesh, body, options.kind ?? 'ball', options.grabbable !== false);
     this.dynamicEntries.push(entry);
     if (entry.grabbable) this.grabbables.push(entry);
     return entry;
+  }
+
+  makeEntry(mesh, body, kind, grabbable) {
+    return {
+      mesh,
+      body,
+      kind,
+      grabbable,
+      heldBy: null,
+      initialPosition: mesh.position.clone(),
+      initialQuaternion: mesh.quaternion.clone()
+    };
   }
 
   step(dt) {
@@ -97,6 +97,28 @@ export class PhysicsSystem {
       mesh.position.set(p.x, p.y, p.z);
       mesh.quaternion.set(q.x, q.y, q.z, q.w);
     }
+  }
+
+  resetDynamicBodies() {
+    this.accumulator = 0;
+    for (const entry of this.dynamicEntries) {
+      entry.heldBy = null;
+      entry.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+      entry.body.setTranslation({
+        x: entry.initialPosition.x,
+        y: entry.initialPosition.y,
+        z: entry.initialPosition.z
+      }, true);
+      entry.body.setRotation({
+        x: entry.initialQuaternion.x,
+        y: entry.initialQuaternion.y,
+        z: entry.initialQuaternion.z,
+        w: entry.initialQuaternion.w
+      }, true);
+      entry.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      entry.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+    this.syncMeshes();
   }
 
   findNearestGrabbable(worldPosition, maxDistance = 0.48) {
