@@ -24,7 +24,7 @@ export function attachDesktopComponents({
   };
 
   const onPointerDown = (event) => {
-    if (event.button !== 0 || !isBuildMode() || getTool() !== 'powered-wheel') return;
+    if (event.button !== 0 || !isBuildMode()) return;
 
     const componentId = componentLayer.pickPointer(event.clientX, event.clientY);
     if (componentId) {
@@ -34,6 +34,7 @@ export function attachDesktopComponents({
       return;
     }
 
+    if (getTool() !== 'powered-wheel') return;
     const nodeId = view.pickNode(event.clientX, event.clientY);
     if (!nodeId) return;
     clearPoweredWheelPreview();
