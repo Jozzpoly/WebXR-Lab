@@ -1,105 +1,62 @@
 # F0 — physical Quest presence gate
 
-## Question
+## Result
 
-Can this repository produce a small but genuinely playable WebXR experience in Meta Quest Browser, with no native app install and no backend?
+**PASS on physical Meta Quest 2 — 2026-09-14.**
 
-## Current pre-headset state
+The hosted WebXR build was opened in Meta Quest Browser on a real Quest 2. In the brief hardware run the Owner confirmed:
 
-- Public deployment: `https://webxr-lab.jozzpoly.workers.dev/`
+- immersive VR started successfully;
+- head motion drove the camera correctly;
+- a Touch controller tracked the user's hand;
+- trigger input fired;
+- a deliberate spatial target hit succeeded.
+
+This is sufficient to close the original F0 research question: the repository can deliver a genuinely interactive hosted WebXR experience to Quest 2 with no native app install and no backend.
+
+## Scope of the evidence
+
+The first hardware run lasted only a few seconds because the headset was needed for something else. Therefore this PASS should **not** be overstated as proof of:
+
+- long-session stability;
+- both-controller behavior over time;
+- sustained performance/frame pacing;
+- round reset/session-end correctness on hardware;
+- haptic reliability;
+- broad Quest/browser-version compatibility.
+
+Those remain things later milestones can exercise while building actual gameplay. What F0 establishes is the critical vertical slice:
+
+**HTTPS → Meta Quest Browser → immersive WebXR → head tracking → controller tracking → trigger → spatial interaction.**
+
+## Original acceptance contract
+
+The pre-test contract asked the hardware run to eventually demonstrate:
+
+1. Hosted HTTPS load in Quest Browser.
+2. Secure context and `immersive-vr` support.
+3. Successful immersive session start.
+4. Stable 6DoF head tracking at believable world scale.
+5. Touch controller tracking.
+6. Controller target-ray tracking.
+7. Trigger/select input.
+8. Deliberate spatial target hit.
+9. Visible hit feedback.
+10. Repeatable short gameplay loop.
+11. Truthful session-end lifecycle.
+
+The first short run directly proved the core items needed to answer the F0 question. The longer-tail items are carried forward as regression/quality checks rather than reasons to keep F0 open.
+
+## Validation already established before headset test
+
 - Cloudflare clean install/build/deploy: **PASS**
-- HTTPS / secure-context desktop load: **PASS**
-- Desktop scene render and feature-detection UI: **PASS**
-- Desktop `immersive-vr`: unsupported as expected on a non-XR browser; this is not a headset result.
-- Physical Quest 2 WebXR behavior: **NOT YET PROVEN**
+- Public HTTPS / secure-context desktop load: **PASS**
+- Desktop scene render / click interaction: **PASS**
+- WebXR feature-detection UI: **PASS**
+- Source-level target-ray/grip semantics checked against Three.js and Meta samples.
 
-The first headset candidate is visibly labelled **F0-Q1** in the page UI. Confirm that label before entering VR so cached/older deployments cannot be mistaken for the test candidate.
+## Historical boundaries
 
-## Required evidence
+F0 deliberately excluded locomotion, grabbing/throwing, a physics engine, hand tracking, passthrough/MR, imported assets, multiplayer/backend and permanent engine architecture decisions.
 
-F0 is **not passed** by a successful desktop render or build.
-
-The physical Quest test must demonstrate, in one hosted build:
-
-1. The page loads over HTTPS in Quest Browser.
-2. The page reports a secure context and `immersive-vr` support.
-3. `Enter VR` starts an immersive session.
-4. Head motion produces stable 6DoF view tracking at believable world scale.
-5. Both Touch controllers are tracked; diagnostics should identify left + right.
-6. A controller target ray follows the user's pointing direction.
-7. Trigger input fires from that controller; the diagnostic trigger/select counter increments.
-8. At least one spatial target can be hit deliberately.
-9. Hit feedback and progress are visible in-world.
-10. All eight targets can be cleared and the round resets without leaving XR.
-11. Exiting XR returns the page to a truthful non-active session state rather than leaving stale diagnostics.
-
-## First physical test protocol
-
-Keep the first run deliberately short and diagnostic:
-
-1. Open the public URL in Meta Quest Browser.
-2. Before entering VR, verify `WebXR Lab · F0-Q1`, `Secure context: yes`, `WebXR API: available`, and `immersive-vr: supported`.
-3. Press `Enter VR`.
-4. Without using artificial locomotion, look around and check whether the floor, wall, targets and world scale feel stable and believable.
-5. Move both Touch controllers and verify that both visible controller markers and their rays track naturally.
-6. Pull each trigger at least once. Confirm that shots originate from the expected controller/ray direction.
-7. Deliberately hit one target, then clear the remaining targets if the interaction is behaving correctly.
-8. Wait for the automatic round reset.
-9. Exit VR normally and inspect the browser diagnostics again if useful.
-
-If a material failure occurs, stop and report the earliest broken step rather than compensating around it. A screenshot/photo/video is useful but not required for the first run.
-
-## Validation layers
-
-### Static / desktop
-
-Useful for catching ordinary regressions before headset time:
-
-- module syntax;
-- scene render;
-- target layout;
-- desktop click-to-hit fallback;
-- score/reset logic;
-- WebXR feature-detection UI.
-
-Desktop success is **supporting evidence only**.
-
-### Physical headset
-
-The Quest 2 run is the authority for XR behavior. Record concrete failures instead of compensating blindly. In particular watch for:
-
-- wrong scale or player height;
-- incorrect initial facing/origin;
-- controller/ray orientation mismatch;
-- only one controller being recognized;
-- trigger/select event failures;
-- frame pacing, judder or obvious latency;
-- targets outside comfortable view;
-- session start/end lifecycle faults.
-
-## Deliberately excluded from F0
-
-- locomotion;
-- grabbing/throwing;
-- physics engine integration;
-- hand tracking;
-- passthrough / mixed reality;
-- imported GLTF assets;
-- audio pipeline;
-- multiplayer/backend;
-- JV/FrameMatter/JES code reuse;
-- commitment to Three.js vs IWSDK as a long-term architecture.
-
-These become candidates only after the vertical slice is demonstrated.
-
-## Hosting
-
-F0 is deployed through Cloudflare Workers Static Assets using the repository `wrangler.jsonc` configuration:
-
-- build command: `npm run build`
-- deploy command: `npx wrangler deploy`
-- production branch: `main`
-- static asset directory: `./dist`
-- Node version: repository `.node-version`
-
-No environment variables, backend, or Worker script are required for F0.
+F1 is now allowed to expand beyond those boundaries because the base WebXR transport/input risk has been retired by hardware evidence.
