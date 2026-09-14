@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SpatialToolPanel } from './spatial-panel.js';
 
 export const BUILD_Y = 0.45;
-export const WORKSPACE_WORLD_POSITION = [0, 0.72, -1.55];
+export const WORKSPACE_WORLD_POSITION = [0, 0.72, -0.78];
 
 const beamGeometry = new THREE.BoxGeometry(1, 1, 1);
 const authoredBeamMaterial = new THREE.MeshStandardMaterial({ color: 0x3d93b5, roughness: 0.32, metalness: 0.46 });
@@ -78,7 +78,7 @@ export class RiftworksScene {
     this.scene.fog = new THREE.Fog(0x071019, 9, 20);
 
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.03, 50);
-    this.camera.position.set(3.15, 2.55, 3.25);
+    this.camera.position.set(2.45, 2.15, 2.45);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
@@ -89,14 +89,14 @@ export class RiftworksScene {
     container.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.target.set(0, 1.12, -1.55);
+    this.controls.target.set(0, 1.08, -0.78);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.mouseButtons.LEFT = null;
     this.controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     this.controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
-    this.controls.minDistance = 1.25;
-    this.controls.maxDistance = 9;
+    this.controls.minDistance = 1.05;
+    this.controls.maxDistance = 8;
 
     this.workspaceRoot = new THREE.Group();
     this.workspaceRoot.position.set(...WORKSPACE_WORLD_POSITION);
@@ -175,7 +175,7 @@ export class RiftworksScene {
 
   #buildWorkspace() {
     const deck = new THREE.Mesh(
-      new THREE.BoxGeometry(3.55, 0.09, 2.7),
+      new THREE.BoxGeometry(1.95, 0.09, 1.25),
       new THREE.MeshStandardMaterial({ color: 0x182832, roughness: 0.48, metalness: 0.46 }),
     );
     deck.position.y = -0.055;
@@ -183,20 +183,20 @@ export class RiftworksScene {
     deck.castShadow = true;
     this.workspaceRoot.add(deck);
 
-    const deckGrid = new THREE.GridHelper(3.35, 20, 0x44c7ef, 0x244656);
+    const deckGrid = new THREE.GridHelper(1.78, 12, 0x44c7ef, 0x244656);
     deckGrid.position.y = 0.004;
     deckGrid.material.transparent = true;
     deckGrid.material.opacity = 0.33;
     this.workspaceRoot.add(deckGrid);
 
-    const buildGrid = new THREE.GridHelper(3.05, 12, 0x67dfff, 0x2b6178);
+    const buildGrid = new THREE.GridHelper(1.55, 10, 0x67dfff, 0x2b6178);
     buildGrid.position.y = BUILD_Y;
     buildGrid.material.transparent = true;
     buildGrid.material.opacity = 0.15;
     this.workspaceRoot.add(buildGrid);
 
     const buildRing = new THREE.Mesh(
-      new THREE.TorusGeometry(1.24, 0.014, 8, 64),
+      new THREE.TorusGeometry(0.66, 0.012, 8, 56),
       new THREE.MeshBasicMaterial({ color: 0x46badf, transparent: true, opacity: 0.48 }),
     );
     buildRing.rotation.x = Math.PI / 2;
@@ -204,19 +204,19 @@ export class RiftworksScene {
     this.workspaceRoot.add(buildRing);
 
     const underGlow = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.3, 2.45),
+      new THREE.PlaneGeometry(1.82, 1.12),
       new THREE.MeshBasicMaterial({ color: 0x123c4c, transparent: true, opacity: 0.16, side: THREE.DoubleSide }),
     );
     underGlow.rotation.x = -Math.PI / 2;
     underGlow.position.y = -0.105;
     this.workspaceRoot.add(underGlow);
 
-    const cornerGeometry = new THREE.BoxGeometry(0.07, 0.16, 0.07);
+    const cornerGeometry = new THREE.BoxGeometry(0.06, 0.14, 0.06);
     const cornerMaterial = new THREE.MeshStandardMaterial({ color: 0x4cc6e8, emissive: 0x0f5368, emissiveIntensity: 0.8, roughness: 0.3 });
-    for (const x of [-1.68, 1.68]) {
-      for (const z of [-1.25, 1.25]) {
+    for (const x of [-0.91, 0.91]) {
+      for (const z of [-0.56, 0.56]) {
         const corner = new THREE.Mesh(cornerGeometry, cornerMaterial);
-        corner.position.set(x, 0.05, z);
+        corner.position.set(x, 0.04, z);
         this.workspaceRoot.add(corner);
       }
     }
