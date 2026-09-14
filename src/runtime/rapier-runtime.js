@@ -1,5 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 
+const vec = ([x, y, z]) => ({ x, y, z });
+
 export class RapierMachineRuntime {
   static async create() {
     await RAPIER.init();
@@ -10,6 +12,7 @@ export class RapierMachineRuntime {
     this.world = null;
     this.plan = null;
     this.bodies = new Map();
+    this.joints = new Map();
     this.accumulator = 0;
     this.fixedDt = 1 / 90;
   }
@@ -50,6 +53,42 @@ export class RapierMachineRuntime {
 
       this.bodies.set(island.id, body);
     }
+
+    for (const component of plan.components ?? []) {
+      if (component.kind !== 'powered-wheel') continue;
+      const hostBody = this.bodies.get(component.hostIslandId);
+      if (!hostBody) throw new Error(`missing runtime host body: ${component.hostIslandId}`);
+
+      const wheelBody = this.world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(...component.center)
+          .setLinearDamping(0.04)
+          .setAngularDamping(0.03),
+      );
+      const [x, y, z, w] = component.colliderRotation;
+      this.world.createCollider(
+        RAPIER.ColliderDesc
+          .cylinder(component.width * 0.5, component.radius)
+          .setRotation({ x, y, z, w })
+          .setDensity(component.density)
+          .setFriction(1.15)
+          .setRestitution(0.03),
+        wheelBody,
+      );
+
+      const jointData = RAPIER.JointData.revolute(
+        vec(component.hostAnchorLocal),
+        vec(component.wheelAnchorLocal),
+        vec(component.axis),
+      );
+      const joint = this.world.createImpulseJoint(jointData, hostBody, wheelBody, true);
+      joint.setContactsEnabled(false);
+      joint.configureMotorVelocity(component.motorVelocity, component.motorDamping);
+
+      this.bodies.set(component.id, wheelBody);
+      this.joints.set(component.id, joint);
+    }
+
     this.accumulator = 0;
   }
 
@@ -70,15 +109,20 @@ export class RapierMachineRuntime {
     for (const [id, body] of this.bodies) {
       const translation = body.translation();
       const rotation = body.rotation();
+      const linear = body.linvel();
+      const angular = body.angvel();
       poses.set(id, {
         position: [translation.x, translation.y, translation.z],
         rotation: [rotation.x, rotation.y, rotation.z, rotation.w],
+        linearVelocity: [linear.x, linear.y, linear.z],
+        angularVelocity: [angular.x, angular.y, angular.z],
       });
     }
     return poses;
   }
 
   stop() {
+    this.joints.clear();
     this.bodies.clear();
     this.plan = null;
     this.accumulator = 0;
