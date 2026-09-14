@@ -36,7 +36,8 @@ This still does **not** prove good construction feel, headset ergonomics, rich 3
 - Rapier RUN/STOP without authored mutation: **PASS**;
 - one powered wheel producing real relative joint rotation: **PASS**;
 - opposite wheel mount sides preserving one shared motor-axis meaning: **PASS**;
-- full four-wheel powered-cart translation through wheel/floor contact: **PASS** — clean Cloudflare production gate on exact commit `bc70f8c75bf5c12f6ffa1c4fe1498e7b4531fdda`;
+- full four-wheel powered-cart translation through wheel/floor contact: **PASS** — the complete candidate previously passed a clean Cloudflare production gate on `bc70f8c75bf5c12f6ffa1c4fe1498e7b4531fdda`;
+- clean powered-machine history checkpoint: `47319e42be27092c0c5004572bbb857b9f550b0c`; this status commit exists to obtain a fresh exact production gate after the history cleanup;
 - desktop interaction/readability Owner smoke: **not yet proven**;
 - IWER controller-path smoke: **not yet proven**;
 - physical Quest: **not available in the current phase**.
