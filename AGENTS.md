@@ -1,10 +1,10 @@
 # Riftworks operating rules
 
-Riftworks is a VR-first engineering sandbox with desktop-first validation while headset access is unavailable.
+Riftworks is a VR-first engineering sandbox with desktop-first validation while physical headset access is unavailable.
 
 ## Product loop
 
-Protect the loop:
+Protect:
 
 `build → run → observe → improve`
 
@@ -17,33 +17,50 @@ Prefer direct construction/topology agency over configuration panels. Strange or
 3. this file and README;
 4. historical commits/donor repositories.
 
-`MachineDocument` is the only authored machine truth. Compiler plans, Rapier state, Three scene objects, IWER state and XR poses are disposable projections/adapters.
+`MachineDocument` is the only authored machine truth. Compiler plans, Rapier state, Three scene objects, workspace/view transforms, IWER state and XR poses are disposable projections/adapters.
 
 Runtime evaluation must never silently write back into authored neutral state.
 
+## VR-first interaction boundary
+
+The final product target is VR. Desktop authoring exists to make iteration/testability possible without a headset, not to define the eventual interaction model.
+
+- machine coordinates are local to the authored machine/workspace, not room/world coordinates;
+- the workbench/world may move for comfort without mutating authored machine geometry;
+- XR head pose is authority for the user's viewpoint and must not be automatically driven by gameplay;
+- desktop camera follow/focus may exist only as an observation aid;
+- immersive XR must offer a complete basic loop without depending on invisible desktop HTML controls;
+- controller trigger is appropriate for indirect/spatial UI selection; grip/squeeze is the primary direct construction/manipulation gesture;
+- spatial controls and desktop controls must invoke the same semantic commands.
+
 ## Testing without a headset
 
-Every substantial capability should be separable into the strongest available evidence layer:
+Every substantial capability should be separated into the strongest available evidence layer:
 
 - pure/core test for document semantics and compilation;
-- headless/runtime test when physics behavior can be tested without rendering;
-- desktop browser interaction for construction/readability;
-- IWER desktop emulation for actual WebXR lifecycle/controller event paths;
+- headless/runtime test for physics behavior;
+- production build verification;
+- desktop browser interaction/readability;
+- IWER emulation for real WebXR lifecycle/controller event paths;
 - physical Quest evidence for presence, ergonomics, tracking feel and final XR acceptance.
 
 Do not describe desktop/IWER evidence as physical Quest proof.
 
-When useful, expose the exact same authored specimen used by headless tests on the Owner surface. This separates simulation failure from browser/presentation or interaction failure.
+A GitHub verification workflow must remain transparent enough to identify whether failure occurs during dependency installation, tests or browser production build. Cloudflare deployment is a separate hosting gate.
+
+When useful, expose the exact same authored specimen used by headless tests on the Owner surface. This separates simulation failure from browser/presentation/interaction failure.
 
 ## Construction grammar
 
-Current research direction is `connect-by-drag + component-first`. Do not regress into a disguised configurator or a hardpoint-only editor. The Owner must be able to create meaningful topology not pre-authored by the prototype.
+Current direction is `connect-by-drag + component-first`. Do not regress into a disguised configurator or hardpoint-only editor. The Owner must eventually be able to create meaningful topology not pre-authored by the prototype.
 
-Convenience inference may propose mechanical intent, but durable intent must remain explicit in `MachineDocument`. Example: a powered wheel stores both its rotation `axis` and independent mount `side`; the solver must not infer semantic intent from viewport or UI state.
+Convenience inference may propose mechanical intent, but durable intent must remain explicit in `MachineDocument`. Powered wheels, for example, store rotation `axis` and independent mount `side`.
 
-## Mechanical causality
+## Mechanical and visual causality
 
-A mechanism is not accepted because it animates correctly. Prefer tests that demonstrate solver-level consequences: relative joint motion, contact-driven translation, load response or other physical effects. Presentation must read runtime body poses rather than recreating the motion independently.
+A mechanism is not accepted because it animates correctly. Prefer tests that demonstrate solver-level consequences: relative joint motion, contact-driven translation, load response or other physical effects. Presentation must read runtime body poses rather than recreate motion independently.
+
+Visual language should reveal useful mechanical intent before RUN where practical: attachment point, axis, side, motor direction, selection/snap state and authored-vs-evaluated distinction. Do not use graphics merely as decoration when the same budget can improve causal readability.
 
 ## Donors
 
@@ -51,6 +68,6 @@ WebXR-Lab history, VAW, NextGen JV, JES, JURE and ANVIL are donors of evidence a
 
 ## Scope discipline
 
-B0 has now demonstrated authored → compile → RUN → STOP integrity plus a first real powered-wheel mechanism and contact-driven cart locomotion in headless Rapier tests. The next authority gap is Owner desktop interaction/readability, followed by IWER controller-path evidence.
+B0 proved authored → compile → RUN → STOP integrity, powered-wheel mechanics and contact-driven cart locomotion. B1 is intentionally focused on VR interaction/presentation foundation: machine-local workspace separation, spatial controls, visual mechanical language, observation quality and eventually comfortable workspace manipulation/direct editing.
 
-Do not add hinge, thruster, steering, suspension or richer mechanical primitives merely because the backend can support them. First test whether the current direct construction loop is understandable and satisfying enough to extend.
+Do not add hinge, thruster, steering, suspension or richer mechanical primitive kinds merely because the backend can support them. First make Beam + Powered Wheel a strong surface for building, reading, manipulating and observing machines in a VR-first workflow.
