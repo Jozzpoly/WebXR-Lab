@@ -4,54 +4,63 @@ Riftworks is a browser/VR engineering sandbox focused on a short creative loop:
 
 > **build → run → observe → improve**
 
-The project deliberately reuses the former `WebXR-Lab` repository, but not its old gameplay architecture. The earlier WebXR experiments proved that hosted immersive VR, tracked Touch controllers and WebXR interaction can run on a physical Quest 2. That history is donor evidence only; active development starts from the fresh Riftworks foundation.
+The project reuses the former `WebXR-Lab` repository, but not its old gameplay architecture. Earlier WebXR work remains donor evidence that hosted immersive VR, tracked Touch controllers and interaction can run on a physical Quest 2. Active Riftworks development starts from the fresh foundation.
 
-## Current live target — B0 Machine Loop
+## Current target — B0 powered-machine loop
 
-B0 asks one narrow but foundational question:
+B0 now asks:
 
-> Can the same authored machine be edited through desktop or XR interaction, compiled into disposable Rapier rigid islands, run under real physics, then stopped without runtime motion mutating authored truth?
+> Can one authored machine be changed through desktop or XR interaction, compiled into disposable Rapier mechanics, produce a real physical consequence, then STOP back to identical authored truth?
 
-Current B0 capabilities:
+Current candidate capabilities:
 
 - one serializable `MachineDocument` authority;
-- direct topology change through `socket → drag → socket/free-space` beam construction;
-- desktop mouse path and XR `squeeze` path call the same authored command;
-- pure deterministic structural compiler that finds rigid islands;
-- Rapier 3D runtime generated fresh on every RUN;
-- STOP discards runtime state and returns to the authored machine;
-- shared renderer resources rather than per-run GPU allocation;
-- pure + headless physics tests run before every production build;
-- optional IWER + DevUI desktop WebXR emulation via `?emulate=1`.
+- `socket → drag → socket/free-space` structural beam construction;
+- component-first `Powered Wheel → socket` placement;
+- wheel axis and mount side are separate explicit authored intent;
+- desktop mouse and XR/IWER squeeze routes converge into the same authored commands;
+- deterministic structural compiler with rigid islands and mechanical component lowering;
+- real Rapier wheel bodies, revolute joints and velocity motors;
+- RUN always creates fresh disposable physics state; STOP discards it;
+- authored wheels and runtime wheels are visually distinct; runtime body pose is driven by Rapier while collider orientation remains a local presentation transform;
+- asymmetric wheel markers make physical rotation observable instead of relying on a visually symmetric cylinder;
+- optional IWER + DevUI WebXR emulation via `?emulate=1`;
+- `LOAD CI-PROVEN CART SPECIMEN` loads the exact authored cart used by the headless locomotion proof, so browser/presentation failures can be separated from builder-quality failures.
 
-This does **not** yet prove construction feel, headset ergonomics, wheels, hinges, motors, thrusters, persistence, save/load, driving, or final architecture.
+This still does **not** prove good construction feel, headset ergonomics, rich 3D desktop authoring, steering, suspension, hinges, thrusters, persistence, final controls or final architecture.
 
-## Evidence
+## Evidence ladder
 
-- MachineDocument/compiler semantics: **PASS** — five pure falsifiers cover validity, immutable topology edits, duplicate protection, rigid-island separation and compiler non-mutation;
-- headless Rapier RUN/STOP: **PASS** — a compiled machine receives real rigid bodies/colliders, moves materially under gravity over 180 fixed steps, authored fingerprint remains unchanged, and STOP discards runtime bodies;
-- production dependency install + full `npm test` + Vite bundle + Cloudflare deploy: **PASS** on exact commit `342d383d8e44c3d29c5d778d0ecaacd3e7647aee`;
-- desktop interactive construction/readability smoke: **not yet proven**;
-- IWER WebXR squeeze/controller interaction smoke: **not yet proven**;
-- physical Quest: **not available for the current phase**.
+- authored document + compiler semantics: **PASS**;
+- degenerate-geometry rejection and beam-axis correspondence: **PASS**;
+- Rapier RUN/STOP without authored mutation: **PASS**;
+- one powered wheel producing real relative joint rotation: **PASS**;
+- opposite wheel mount sides preserving one shared motor-axis meaning: **PASS**;
+- full four-wheel powered-cart translation through wheel/floor contact: **PASS** — clean Cloudflare production gate on exact commit `bc70f8c75bf5c12f6ffa1c4fe1498e7b4531fdda`;
+- desktop interaction/readability Owner smoke: **not yet proven**;
+- IWER controller-path smoke: **not yet proven**;
+- physical Quest: **not available in the current phase**.
 
-## Run locally
+## Desktop owner smoke
+
+1. Open the deployed Riftworks URL.
+2. Press `LOAD CI-PROVEN CART SPECIMEN`.
+3. Press `RUN` or Space. The cart should fall under gravity, wheels should visibly rotate, and the machine should translate because of wheel/floor contact — there is no kinematic drive animation.
+4. Press `STOP`; the authored cart should snap back exactly to its neutral build state.
+5. Press `RESET BUILD`, use Beam to make your own topology, switch to Powered Wheel, click structural sockets, and repeat RUN → STOP → rebuild.
+
+The smoke above validates browser/presentation and basic Owner interaction. It does not replace physical Quest evidence.
+
+## Local validation
 
 ```bash
 npm install
+npm test
+npm run build
 npm run dev
 ```
 
-Normal desktop builder: open the Vite URL.
-
-Desktop WebXR emulation: add `?emulate=1`. On localhost IWER is also allowed to install automatically when no native immersive runtime is available.
-
-Validation:
-
-```bash
-npm test
-npm run build
-```
+Add `?emulate=1` to the local URL to install IWER when no native immersive runtime is available.
 
 ## Durable boundaries
 

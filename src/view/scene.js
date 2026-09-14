@@ -6,6 +6,11 @@ export const BUILD_Y = 1.12;
 const beamGeometry = new THREE.BoxGeometry(1, 1, 1);
 const authoredBeamMaterial = new THREE.MeshStandardMaterial({ color: 0x57b6ff, roughness: 0.42, metalness: 0.18 });
 const runtimeBeamMaterial = new THREE.MeshStandardMaterial({ color: 0xffb95f, roughness: 0.5, metalness: 0.12 });
+const wheelGeometry = new THREE.CylinderGeometry(1, 1, 1, 28, 1, false);
+const wheelMarkerGeometry = new THREE.SphereGeometry(0.045, 12, 8);
+const authoredWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x57f0aa, roughness: 0.55, metalness: 0.08 });
+const runtimeWheelMaterial = new THREE.MeshStandardMaterial({ color: 0xff8f4d, roughness: 0.63, metalness: 0.08 });
+const wheelMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0xfff19a });
 const nodeGeometry = new THREE.SphereGeometry(0.075, 18, 12);
 const nodeMaterial = new THREE.MeshStandardMaterial({ color: 0xeaf5ff, emissive: 0x123148, emissiveIntensity: 0.65, roughness: 0.28 });
 const ghostMaterial = new THREE.MeshBasicMaterial({ color: 0x8af7c8, transparent: true, opacity: 0.58, depthWrite: false });
@@ -18,6 +23,22 @@ function fitBeam(mesh, a, b, thickness) {
   mesh.position.copy(start).add(end).multiplyScalar(0.5);
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), delta.normalize());
   mesh.scale.set(len, thickness, thickness);
+}
+
+function createWheelShape(component, material) {
+  const shape = new THREE.Group();
+  shape.quaternion.set(...component.colliderRotation);
+
+  const wheel = new THREE.Mesh(wheelGeometry, material);
+  wheel.scale.set(component.radius, component.width, component.radius);
+  wheel.castShadow = true;
+  wheel.receiveShadow = true;
+  shape.add(wheel);
+
+  const marker = new THREE.Mesh(wheelMarkerGeometry, wheelMarkerMaterial);
+  marker.position.set(component.radius * 0.66, component.width * 0.56, 0);
+  shape.add(marker);
+  return shape;
 }
 
 export class RiftworksScene {
@@ -112,7 +133,7 @@ export class RiftworksScene {
     this.renderer.setSize(width, height, false);
   }
 
-  renderAuthored(document) {
+  renderAuthored(document, plan) {
     this.authoredGroup.clear();
     this.nodeMeshes.clear();
     const nodes = new Map(document.nodes.map((node) => [node.id, node]));
@@ -123,6 +144,14 @@ export class RiftworksScene {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.authoredGroup.add(mesh);
+    }
+
+    for (const component of plan.components ?? []) {
+      if (component.kind !== 'powered-wheel') continue;
+      const root = new THREE.Group();
+      root.position.set(...component.center);
+      root.add(createWheelShape(component, authoredWheelMaterial));
+      this.authoredGroup.add(root);
     }
 
     for (const node of document.nodes) {
@@ -151,6 +180,15 @@ export class RiftworksScene {
         root.add(mesh);
       }
       this.runtimeRoots.set(island.id, root);
+      this.runtimeGroup.add(root);
+    }
+
+    for (const component of plan.components ?? []) {
+      if (component.kind !== 'powered-wheel') continue;
+      const root = new THREE.Group();
+      root.position.set(...component.center);
+      root.add(createWheelShape(component, runtimeWheelMaterial));
+      this.runtimeRoots.set(component.id, root);
       this.runtimeGroup.add(root);
     }
   }

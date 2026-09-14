@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BUILD_Y } from '../view/scene.js';
 
-export function attachDesktopBuilder({ view, getDocument, isBuildMode, commitExtend, getGridEnabled }) {
+export function attachDesktopBuilder({ view, getDocument, isBuildMode, commitExtend, getGridEnabled, getTool }) {
   const canvas = view.renderer.domElement;
   const state = { startId: null, lastPoint: null, pointerId: null };
 
@@ -16,7 +16,7 @@ export function attachDesktopBuilder({ view, getDocument, isBuildMode, commitExt
   };
 
   const update = (event) => {
-    if (!state.startId || !isBuildMode()) return;
+    if (!state.startId || !isBuildMode() || getTool() !== 'beam') return;
     const point = view.pointOnBuildPlane(event.clientX, event.clientY);
     if (!point) return;
     const snapped = snap(point);
@@ -32,7 +32,7 @@ export function attachDesktopBuilder({ view, getDocument, isBuildMode, commitExt
   };
 
   canvas.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || !isBuildMode()) return;
+    if (event.button !== 0 || !isBuildMode() || getTool() !== 'beam') return;
     const startId = view.pickNode(event.clientX, event.clientY);
     if (!startId) return;
     state.startId = startId;

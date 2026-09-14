@@ -33,9 +33,17 @@ Every substantial capability should be separable into the strongest available ev
 
 Do not describe desktop/IWER evidence as physical Quest proof.
 
+When useful, expose the exact same authored specimen used by headless tests on the Owner surface. This separates simulation failure from browser/presentation or interaction failure.
+
 ## Construction grammar
 
-Current research direction is `connect-by-drag + component-first`. Do not regress into a disguised configurator or a hardpoint-only editor. The Owner must eventually be able to create meaningful topology not pre-authored by the prototype.
+Current research direction is `connect-by-drag + component-first`. Do not regress into a disguised configurator or a hardpoint-only editor. The Owner must be able to create meaningful topology not pre-authored by the prototype.
+
+Convenience inference may propose mechanical intent, but durable intent must remain explicit in `MachineDocument`. Example: a powered wheel stores both its rotation `axis` and independent mount `side`; the solver must not infer semantic intent from viewport or UI state.
+
+## Mechanical causality
+
+A mechanism is not accepted because it animates correctly. Prefer tests that demonstrate solver-level consequences: relative joint motion, contact-driven translation, load response or other physical effects. Presentation must read runtime body poses rather than recreating the motion independently.
 
 ## Donors
 
@@ -43,4 +51,6 @@ WebXR-Lab history, VAW, NextGen JV, JES, JURE and ANVIL are donors of evidence a
 
 ## Scope discipline
 
-B0 proves authored → compile → RUN → STOP integrity and shared desktop/XR construction semantics. Wheels, hinges, thrusters and richer machine behavior follow only after this loop is technically credible enough to extend.
+B0 has now demonstrated authored → compile → RUN → STOP integrity plus a first real powered-wheel mechanism and contact-driven cart locomotion in headless Rapier tests. The next authority gap is Owner desktop interaction/readability, followed by IWER controller-path evidence.
+
+Do not add hinge, thruster, steering, suspension or richer mechanical primitives merely because the backend can support them. First test whether the current direct construction loop is understandable and satisfying enough to extend.

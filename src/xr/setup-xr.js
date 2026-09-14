@@ -9,7 +9,15 @@ const rayMaterial = new THREE.LineBasicMaterial({ color: 0x81e6ff, transparent: 
 const gripGeometry = new THREE.BoxGeometry(0.045, 0.09, 0.13);
 const gripMaterial = new THREE.MeshStandardMaterial({ color: 0x243849, roughness: 0.48, metalness: 0.32 });
 
-export function setupXrConstruction({ view, getDocument, isBuildMode, commitExtend, mountButton }) {
+export function setupXrConstruction({
+  view,
+  getDocument,
+  isBuildMode,
+  getTool,
+  commitExtend,
+  commitPoweredWheel,
+  mountButton,
+}) {
   view.renderer.xr.setReferenceSpaceType('local-floor');
   const desktopPosition = view.camera.position.clone();
   const desktopQuaternion = view.camera.quaternion.clone();
@@ -59,14 +67,22 @@ export function setupXrConstruction({ view, getDocument, isBuildMode, commitExte
       if (!isBuildMode()) return;
       grip.updateWorldMatrix(true, false);
       grip.getWorldPosition(worldPoint);
-      const startId = view.nearestNode(getDocument(), worldPoint, 0.18);
-      if (!startId) return;
-      state.startId = startId;
+      const nodeId = view.nearestNode(getDocument(), worldPoint, 0.18);
+      if (!nodeId) return;
+
+      if (getTool() === 'powered-wheel') {
+        commitPoweredWheel(nodeId);
+        state.startId = null;
+        return;
+      }
+
+      if (getTool() !== 'beam') return;
+      state.startId = nodeId;
       state.end.copy(worldPoint);
     });
 
     controller.addEventListener('squeezeend', () => {
-      if (!state.startId || !isBuildMode()) return;
+      if (getTool() !== 'beam' || !state.startId || !isBuildMode()) return;
       grip.updateWorldMatrix(true, false);
       grip.getWorldPosition(worldPoint);
       const doc = getDocument();
@@ -88,7 +104,7 @@ export function setupXrConstruction({ view, getDocument, isBuildMode, commitExte
 
   return {
     update() {
-      if (!isBuildMode()) return;
+      if (!isBuildMode() || getTool() !== 'beam') return;
       for (const hand of hands) {
         if (!hand.state.startId) continue;
         hand.grip.updateWorldMatrix(true, false);
