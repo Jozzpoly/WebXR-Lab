@@ -1,25 +1,33 @@
-import { attachPoweredWheel } from './machine-document.js';
+import { attachPoweredWheel, createBeam, createEmptyMachine } from './machine-document.js';
 
 export function createPoweredCartMachine() {
-  let document = {
-    version: 2,
-    revision: 0,
-    nextIds: { node: 5, beam: 6, component: 1 },
-    nodes: [
-      { id: 'n1', position: [-0.45, 0.45, 0.4] },
-      { id: 'n2', position: [0.45, 0.45, 0.4] },
-      { id: 'n3', position: [-0.45, 0.45, -0.4] },
-      { id: 'n4', position: [0.45, 0.45, -0.4] },
-    ],
-    beams: [
-      { id: 'b1', a: 'n1', b: 'n2', roll: 0, thickness: 0.1, density: 320 },
-      { id: 'b2', a: 'n3', b: 'n4', roll: 0, thickness: 0.1, density: 320 },
-      { id: 'b3', a: 'n1', b: 'n3', roll: 0, thickness: 0.1, density: 320 },
-      { id: 'b4', a: 'n2', b: 'n4', roll: 0, thickness: 0.1, density: 320 },
-      { id: 'b5', a: 'n1', b: 'n4', roll: 0, thickness: 0.08, density: 260 },
-    ],
-    components: [],
-  };
+  let document = createEmptyMachine();
+  document = createBeam(document, [-0.45, 0.45, 0.4], [0.45, 0.45, 0.4], {
+    thickness: 0.1,
+    density: 320,
+  });
+  document = createBeam(document, [-0.45, 0.45, -0.4], [0.45, 0.45, -0.4], {
+    thickness: 0.1,
+    density: 320,
+  });
+  document = createBeam(document, [-0.45, 0.45, 0.4], [-0.45, 0.45, -0.4], {
+    startTargetBeamEnd: { beamId: 'b1', end: 'a' },
+    endTargetBeamEnd: { beamId: 'b2', end: 'a' },
+    thickness: 0.1,
+    density: 320,
+  });
+  document = createBeam(document, [0.45, 0.45, 0.4], [0.45, 0.45, -0.4], {
+    startTargetBeamEnd: { beamId: 'b1', end: 'b' },
+    endTargetBeamEnd: { beamId: 'b2', end: 'b' },
+    thickness: 0.1,
+    density: 320,
+  });
+  document = createBeam(document, [-0.45, 0.45, 0.4], [0.45, 0.45, -0.4], {
+    startTargetBeamEnd: { beamId: 'b1', end: 'a' },
+    endTargetBeamEnd: { beamId: 'b2', end: 'b' },
+    thickness: 0.08,
+    density: 260,
+  });
 
   const wheel = (hostBeamId, along, localSide) => {
     document = attachPoweredWheel(document, hostBeamId, {
