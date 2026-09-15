@@ -128,6 +128,21 @@ export function installIwerRehearsal({
   const toWorld = (local) => view.workspaceToWorldPoint(new THREE.Vector3(...local), new THREE.Vector3());
   const rayOrigin = new THREE.Vector3(0.28, 1.38, -0.12);
 
+  const selectBeamByVisiblePoint = async (beamId, fraction, originLocal, label) => {
+    const a = beamEndPosition(getDocument(), beamId, 'a');
+    const b = beamEndPosition(getDocument(), beamId, 'b');
+    requireState(a && b, `${label}: beam endpoints unavailable`);
+    const point = toWorld([
+      a[0] + (b[0] - a[0]) * fraction,
+      a[1] + (b[1] - a[1]) * fraction,
+      a[2] + (b[2] - a[2]) * fraction,
+    ]);
+    const origin = toWorld(originLocal);
+    await setPose(view, device, controller, origin, point, `${label}: aim`);
+    await pulse(view, device, controller, TRIGGER, `${label}: select`);
+    requireState(getSelectedBeamId() === beamId, `${label}: real beam could not be selected from a visible surface`);
+  };
+
   const run = async () => {
     if (running) return;
     running = true;
@@ -141,25 +156,25 @@ export function installIwerRehearsal({
       publishTrace('initial-xr-frames');
       await xrFrames(view, 6, 'initial session');
       requireState(getMode() === 'build', 'rehearsal must start in BUILD');
-      requireState(getDocument().components.length === 0, 'rehearsal expects a fresh seed machine');
-      requireState(getDocument().beams.length === 1, 'rehearsal expects one seed beam');
-      mark('fresh-build');
+      requireState(getTool() === 'beam', 'blank workshop must start with BEAM authoring active');
+      requireState(getDocument().components.length === 0, 'rehearsal expects no components');
+      requireState(getDocument().beams.length === 0, 'rehearsal expects a genuinely blank workshop');
+      requireState(getDocument().nodes.length === 0, 'blank workshop must not hide starter topology');
+      mark('blank-workshop');
 
-      await setPose(view, device, controller, rayOrigin, actionTarget('beam'), 'beam-tool-aim');
-      await pulse(view, device, controller, TRIGGER, 'beam-tool-select');
-      requireState(getTool() === 'beam', 'trigger ray did not select BEAM');
-
+      const firstStart = toWorld([-0.36, 0.45, 0]);
+      const firstEnd = toWorld([0.36, 0.45, 0]);
+      await dragGrip(view, device, controller, firstStart, firstEnd, 'first-beam-create');
+      requireState(getDocument().beams.length === 1, 'blank-space grip drag did not author the first beam');
+      requireState(getDocument().nodes.length === 2, 'first beam should own exactly two internal endpoints');
       const seed = getDocument().beams[0];
-      const a = beamEndPosition(getDocument(), seed.id, 'a');
-      const b = beamEndPosition(getDocument(), seed.id, 'b');
-      requireState(a && b, 'seed beam endpoints unavailable');
-      const beamCenter = toWorld([(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5]);
-      await setPose(view, device, controller, rayOrigin, beamCenter, 'seed-beam-aim');
-      await pulse(view, device, controller, TRIGGER, 'seed-beam-select');
-      requireState(getSelectedBeamId() === seed.id, 'trigger ray did not select the real seed beam');
+      mark('beam-create');
+
+      await selectBeamByVisiblePoint(seed.id, 0.5, [0.75, 0.72, 0.45], 'seed-beam');
       requireState(structuralLayer.selectedBeamId === seed.id, 'selected beam did not expose structural handles');
       mark('part-select');
 
+      const b = beamEndPosition(getDocument(), seed.id, 'b');
       const extendHandle = { kind: 'extend', beamId: seed.id, end: 'b' };
       const extendFrom = xrConstruction.getBeamHandleWorldPosition(extendHandle, new THREE.Vector3());
       requireState(extendFrom, 'extend handle world pose missing');
@@ -170,20 +185,8 @@ export function installIwerRehearsal({
 
       const extension = getDocument().beams.find((beam) => beam.id !== seed.id);
       requireState(extension, 'new structural beam identity missing');
-      const extensionA = beamEndPosition(getDocument(), extension.id, 'a');
       const extensionB = beamEndPosition(getDocument(), extension.id, 'b');
-      const extensionVisiblePoint = toWorld([
-        extensionA[0] + (extensionB[0] - extensionA[0]) * 0.75,
-        extensionA[1] + (extensionB[1] - extensionA[1]) * 0.75,
-        extensionA[2] + (extensionB[2] - extensionA[2]) * 0.75,
-      ]);
-      // Approach the new member from its open side. A ray from the original
-      // front-of-workbench pose legitimately hits the parent beam first near
-      // the welded junction; the rehearsal must not require through-object picking.
-      const partRayOrigin = toWorld([0.75, 0.70, -0.20]);
-      await setPose(view, device, controller, partRayOrigin, extensionVisiblePoint, 'extension-beam-aim');
-      await pulse(view, device, controller, TRIGGER, 'extension-beam-select');
-      requireState(getSelectedBeamId() === extension.id, 'new beam could not be selected from a visible surface');
+      await selectBeamByVisiblePoint(extension.id, 0.75, [0.75, 0.70, -0.20], 'extension-beam');
 
       const moveHandle = { kind: 'move', beamId: extension.id, end: 'b' };
       const moveFrom = xrConstruction.getBeamHandleWorldPosition(moveHandle, new THREE.Vector3());
@@ -196,6 +199,11 @@ export function installIwerRehearsal({
         'MOVE handle did not materially reshape the structural part',
       );
       mark('beam-reshape');
+
+      await setPose(view, device, controller, rayOrigin, actionTarget('beam-done'), 'beam-done-aim');
+      await pulse(view, device, controller, TRIGGER, 'beam-done');
+      requireState(getSelectedBeamId() === null, 'BEAM DONE did not close structural selection');
+      mark('beam-context-close');
 
       await setPose(view, device, controller, rayOrigin, actionTarget('powered-wheel'), 'wheel-tool-aim');
       await pulse(view, device, controller, TRIGGER, 'wheel-tool-select');
@@ -261,7 +269,7 @@ export function installIwerRehearsal({
       controller.updateButtonValue(SQUEEZE, 0);
       device.notifyStateChange();
       await xrFrames(view, 3, 'workspace-grab: release');
-      requireState(view.workspaceRoot.position.distanceTo(workspaceStart) > 0.08, 'workspace grip did not translate WorkspaceRoot');
+      requireState(view.workspaceRoot.position.distanceTo(workspaceStart) > 0.08, 'workspace grip did not translate WorkspaceRoot in BUILD');
       requireState(machineFingerprint(getDocument()) === authoredBeforeWorkspaceMove, 'workspace movement mutated authored machine truth');
       mark('workspace-grab');
 
@@ -270,22 +278,39 @@ export function installIwerRehearsal({
       await setPose(view, device, controller, rayOrigin, actionTarget('run-toggle'), 'enter-run-aim');
       publishTrace('enter-run:pulse');
       await pulse(view, device, controller, TRIGGER, 'enter-run');
-      publishTrace('enter-run:assert');
       requireState(getMode() === 'run', 'trigger ray did not enter RUN');
-      publishTrace('run:observe');
       await xrFrames(view, 8, 'run-observe');
       requireState(machineFingerprint(getDocument()) === authoredBeforeRun, 'RUN mutated authored truth');
 
-      publishTrace('stop-run:aim');
+      const workspaceDuringRun = view.workspaceRoot.position.clone();
+      const oldHandleWorld = xrConstruction.getWorkspaceHandleWorldPosition(new THREE.Vector3());
+      await dragGrip(view, device, controller, oldHandleWorld, oldHandleWorld.clone().add(new THREE.Vector3(0.2, 0, 0)), 'run-workspace-rejection');
+      requireState(view.workspaceRoot.position.distanceTo(workspaceDuringRun) < 1e-6, 'RUN must reject authoring workspace translation');
+      mark('run-workspace-isolation');
+
       await setPose(view, device, controller, rayOrigin, actionTarget('run-toggle'), 'stop-run-aim');
-      publishTrace('stop-run:pulse');
       await pulse(view, device, controller, TRIGGER, 'stop-run');
-      publishTrace('stop-run:assert');
       requireState(getMode() === 'build', 'trigger ray did not STOP back to BUILD');
       requireState(machineFingerprint(getDocument()) === authoredBeforeRun, 'STOP did not preserve edited authored truth');
       mark('run-stop-authority');
 
-      requireState(machineFingerprint(getDocument()) !== authoredAtStart, 'rehearsal authored no durable edit');
+      await selectBeamByVisiblePoint(seed.id, 0.45, [0.75, 0.72, 0.45], 'delete-host-beam');
+      await setPose(view, device, controller, rayOrigin, actionTarget('beam-delete'), 'delete-host-aim');
+      await pulse(view, device, controller, TRIGGER, 'delete-host');
+      requireState(getDocument().beams.length === 1, 'beam DELETE did not remove the selected structural part');
+      requireState(getDocument().components.length === 0, 'deleting a host beam left a dangling powered wheel');
+      mark('beam-delete-cascade');
+
+      const remaining = getDocument().beams[0];
+      await selectBeamByVisiblePoint(remaining.id, 0.55, [0.75, 0.70, -0.20], 'delete-final-beam');
+      await setPose(view, device, controller, rayOrigin, actionTarget('beam-delete'), 'delete-final-aim');
+      await pulse(view, device, controller, TRIGGER, 'delete-final');
+      requireState(getDocument().beams.length === 0, 'deleting final beam did not return to blank structure');
+      requireState(getDocument().nodes.length === 0, 'blank return left orphan topology');
+      requireState(getDocument().components.length === 0, 'blank return left components');
+      mark('blank-return');
+
+      requireState(machineFingerprint(getDocument()) !== authoredAtStart, 'lifecycle should advance authored revision/id provenance even after returning to blank geometry');
       publishTrace('pass');
       report(`XR rehearsal PASS · ${stages.length}/${stages.length}: ${stages.map((stage) => stage.name).join(' → ')}`);
       window.__riftworksXrRehearsal = { pass: true, stages: [...stages], phase };
@@ -310,6 +335,6 @@ export function installIwerRehearsal({
     run();
   });
   publishTrace('armed');
-  report('XR rehearsal armed. Enter VR once; IWER will execute the part-first controller-path rehearsal automatically.');
+  report('XR rehearsal armed. Enter VR once; IWER will execute the blank-workshop part lifecycle automatically.');
   return { enabled: true, stages };
 }
