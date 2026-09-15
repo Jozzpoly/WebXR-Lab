@@ -7,7 +7,7 @@ export const MACHINE_YARD_WORLD = Object.freeze({
       id: 'room-floor',
       shape: 'box',
       center: Object.freeze([0, -0.08, 0]),
-      halfExtents: Object.freeze([7, 0.08, 7]),
+      halfExtents: Object.freeze([30, 0.08, 30]),
       friction: 0.9,
       restitution: 0.03,
       visible: true,
