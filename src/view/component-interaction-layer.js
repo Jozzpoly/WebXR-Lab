@@ -75,6 +75,41 @@ export class ComponentInteractionLayer {
     this.selection.visible = false;
     this.selection.renderOrder = 30;
     this.group.add(this.selection);
+
+    if (typeof window !== 'undefined' && import.meta.env?.DEV) {
+      const layer = this;
+      window.__riftworksDesktopEvidence = Object.freeze({
+        cameraRight() {
+          return new THREE.Vector3(1, 0, 0).applyQuaternion(view.camera.quaternion).normalize().toArray();
+        },
+        projectMachinePoint(point) {
+          if (!Array.isArray(point) || point.length !== 3 || !point.every(Number.isFinite)) return null;
+          const rect = view.renderer.domElement.getBoundingClientRect();
+          const world = view.machineToWorldPoint(new THREE.Vector3(...point));
+          const projected = world.project(view.camera);
+          return {
+            x: rect.x + (projected.x + 1) * 0.5 * rect.width,
+            y: rect.y + (1 - projected.y) * 0.5 * rect.height,
+          };
+        },
+        beamSurfaceAt(clientX, clientY) {
+          const hit = view.pickBeamSurface(clientX, clientY);
+          return hit ? {
+            beamId: hit.beamId,
+            localPosition: [...hit.localPosition],
+            localNormal: [...hit.localNormal],
+            distance: hit.distance,
+          } : null;
+        },
+        previewMachinePosition() {
+          if (!layer.previewRoot.visible || layer.previewRoot.children.length === 0) return null;
+          return layer.previewRoot.children[0].position.toArray();
+        },
+        componentMachinePosition(componentId) {
+          return layer.targets.get(componentId)?.position.toArray() ?? null;
+        },
+      });
+    }
   }
 
   sync(plan) {
