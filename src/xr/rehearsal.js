@@ -96,7 +96,12 @@ async function readGripWorld(view, handedness = 'right', label = 'grip-pose') {
 async function setGripPose(view, device, controller, desiredWorld, label = 'set-grip-pose') {
   await setPose(view, device, controller, desiredWorld, null, `${label}: target-ray-seed`);
   const firstGrip = await readGripWorld(view, 'right', `${label}: first-grip`);
-  controller.position.add(desiredWorld.clone().sub(firstGrip));
+  const correction = desiredWorld.clone().sub(firstGrip);
+  controller.position.set(
+    controller.position.x + correction.x,
+    controller.position.y + correction.y,
+    controller.position.z + correction.z,
+  );
   device.notifyStateChange();
   await xrFrames(view, 3, `${label}: corrected-settle`);
   const settledGrip = await readGripWorld(view, 'right', `${label}: settled-grip`);
