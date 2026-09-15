@@ -113,6 +113,7 @@ export class ComponentInteractionLayer {
 
   pickPreviewPointer(clientX, clientY) {
     if (!this.previewRoot.visible) return false;
+    this.previewRoot.updateWorldMatrix(true, true);
     this.#pointerRay(clientX, clientY);
     const hits = this.raycaster.intersectObject(this.previewRoot, true);
     return hits.some((hit) => hit.object.userData.wheelPreviewTarget === true);
