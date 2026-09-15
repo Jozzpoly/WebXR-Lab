@@ -55,7 +55,7 @@ test('part-first single beam is valid and compiles to one rigid island', () => {
 test('extendFromBeamEnd is immutable and creates welded topology', () => {
   const original = createSingleBeamMachine();
   const before = machineFingerprint(original);
-  const next = extendFromBeamEnd(original, 'b1', 'b', [0.9, 0.45, -1.2]);
+  const next = extendFromBeamEnd(original, 'b1', 'b', [0.9, 0, -1.2]);
   assert.equal(machineFingerprint(original), before);
   assert.equal(next.nodes.length, 3);
   assert.equal(next.beams.length, 2);
@@ -70,7 +70,7 @@ test('connecting existing beam ends does not duplicate an existing structural co
     document,
     'b1',
     'a',
-    [0.4, 0.45, 0],
+    [0.4, 0, 0],
     { beamId: 'b1', end: 'b' },
   );
   assert.strictEqual(next, document);
@@ -78,8 +78,8 @@ test('connecting existing beam ends does not duplicate an existing structural co
 
 test('disconnected authored parts compile into separate rigid islands', () => {
   let document = createSingleBeamMachine();
-  document = extendFromBeamEnd(document, 'b1', 'b', [0.9, 0.45, -1.45]);
-  document = createBeam(document, [-0.5, 0.45, -2.2], [0.1, 0.45, -2.2]);
+  document = extendFromBeamEnd(document, 'b1', 'b', [0.9, 0, -1.45]);
+  document = createBeam(document, [-0.5, 0, -2.2], [0.1, 0, -2.2]);
   const plan = compileMachine(document);
   assert.equal(plan.islands.length, 2);
 });
@@ -132,7 +132,7 @@ test('powered wheel authoring is immutable and compiles against the structural h
   assert.equal(wheel.hostIslandId, 'island-1');
   assert.deepEqual(wheel.axis, [0, 0, 1]);
   assert.equal(wheel.motorVelocity, 7);
-  assert.deepEqual(wheel.hostAnchorMachine, [0, 0.45, 0.06]);
+  assert.deepEqual(wheel.hostAnchorMachine, [0, 0, 0.06]);
 });
 
 test('powered wheel requires a real structural host beam and non-zero mount axis', () => {

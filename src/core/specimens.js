@@ -2,27 +2,27 @@ import { attachPoweredWheel, createBeam, createEmptyMachine } from './machine-do
 
 export function createPoweredCartMachine() {
   let document = createEmptyMachine();
-  document = createBeam(document, [-0.45, 0.45, 0.4], [0.45, 0.45, 0.4], {
+  document = createBeam(document, [-0.45, 0, 0.4], [0.45, 0, 0.4], {
     thickness: 0.1,
     density: 320,
   });
-  document = createBeam(document, [-0.45, 0.45, -0.4], [0.45, 0.45, -0.4], {
+  document = createBeam(document, [-0.45, 0, -0.4], [0.45, 0, -0.4], {
     thickness: 0.1,
     density: 320,
   });
-  document = createBeam(document, [-0.45, 0.45, 0.4], [-0.45, 0.45, -0.4], {
+  document = createBeam(document, [-0.45, 0, 0.4], [-0.45, 0, -0.4], {
     startTargetBeamEnd: { beamId: 'b1', end: 'a' },
     endTargetBeamEnd: { beamId: 'b2', end: 'a' },
     thickness: 0.1,
     density: 320,
   });
-  document = createBeam(document, [0.45, 0.45, 0.4], [0.45, 0.45, -0.4], {
+  document = createBeam(document, [0.45, 0, 0.4], [0.45, 0, -0.4], {
     startTargetBeamEnd: { beamId: 'b1', end: 'b' },
     endTargetBeamEnd: { beamId: 'b2', end: 'b' },
     thickness: 0.1,
     density: 320,
   });
-  document = createBeam(document, [-0.45, 0.45, 0.4], [0.45, 0.45, -0.4], {
+  document = createBeam(document, [-0.45, 0, 0.4], [0.45, 0, -0.4], {
     startTargetBeamEnd: { beamId: 'b1', end: 'a' },
     endTargetBeamEnd: { beamId: 'b2', end: 'b' },
     thickness: 0.08,

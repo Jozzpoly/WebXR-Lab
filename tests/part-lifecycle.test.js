@@ -19,10 +19,10 @@ test('an empty workshop is valid authored truth and compiles without runtime isl
   assert.deepEqual(compileMachine(document).islands, []);
 });
 
-test('first beam can be authored from blank space without public node prerequisites', () => {
+test('first beam can be authored from blank machine space without public node prerequisites', () => {
   const empty = createEmptyMachine();
   const before = machineFingerprint(empty);
-  const next = createBeam(empty, [-0.35, 0.45, 0], [0.45, 0.45, 0]);
+  const next = createBeam(empty, [-0.35, 0, 0], [0.45, 0, 0]);
 
   assert.equal(machineFingerprint(empty), before);
   assert.equal(next.beams.length, 1);
@@ -33,12 +33,12 @@ test('first beam can be authored from blank space without public node prerequisi
 });
 
 test('free beam creation can weld directly onto existing physical beam ends', () => {
-  let document = createBeam(createEmptyMachine(), [-0.4, 0.45, 0], [0.4, 0.45, 0]);
+  let document = createBeam(createEmptyMachine(), [-0.4, 0, 0], [0.4, 0, 0]);
   const existingEnd = { beamId: 'b1', end: 'b' };
   document = createBeam(
     document,
-    [0.4, 0.45, 0],
-    [0.4, 0.45, -0.65],
+    [0.4, 0, 0],
+    [0.4, 0, -0.65],
     { startTargetBeamEnd: existingEnd },
   );
 
@@ -49,8 +49,8 @@ test('free beam creation can weld directly onto existing physical beam ends', ()
 });
 
 test('removing a structural part removes hosted components and only orphaned topology', () => {
-  let document = createBeam(createEmptyMachine(), [-0.5, 0.45, 0], [0.3, 0.45, 0]);
-  document = createBeam(document, [0.3, 0.45, 0], [0.3, 0.45, -0.7], {
+  let document = createBeam(createEmptyMachine(), [-0.5, 0, 0], [0.3, 0, 0]);
+  document = createBeam(document, [0.3, 0, 0], [0.3, 0, -0.7], {
     startTargetBeamEnd: { beamId: 'b1', end: 'b' },
   });
   document = attachPoweredWheel(document, 'b2', {
@@ -68,7 +68,7 @@ test('removing a structural part removes hosted components and only orphaned top
 });
 
 test('deleting the final beam returns to a valid blank workshop', () => {
-  const document = createBeam(createEmptyMachine(), [-0.4, 0.45, 0], [0.4, 0.45, 0]);
+  const document = createBeam(createEmptyMachine(), [-0.4, 0, 0], [0.4, 0, 0]);
   const nextBeamId = document.nextIds.beam;
   const nextNodeId = document.nextIds.node;
   const blank = removeBeam(document, 'b1');
@@ -83,7 +83,7 @@ test('deleting the final beam returns to a valid blank workshop', () => {
 
 test('degenerate free creation is rejected without leaving orphan topology', () => {
   const empty = createEmptyMachine();
-  const next = createBeam(empty, [0, 0.45, 0], [0.01, 0.45, 0]);
+  const next = createBeam(empty, [0, 0, 0], [0.01, 0, 0]);
   assert.strictEqual(next, empty);
   assert.deepEqual(next.nodes, []);
   assert.deepEqual(next.beams, []);

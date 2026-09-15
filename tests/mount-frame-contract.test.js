@@ -36,16 +36,16 @@ test('powered wheel mount is authored against a host beam frame, not a structura
 
   assert.equal(component.hostBeamId, 'b1');
   near(component.axis, [0, 0, 1]);
-  near(component.hostAnchorMachine, [0, 0.45, 0.06]);
-  near(component.center, [0, 0.45, 0.14]);
+  near(component.hostAnchorMachine, [0, 0, 0.06]);
+  near(component.center, [0, 0, 0.14]);
 });
 
 test('unrelated part-first topology cannot rotate or move an existing host-relative wheel mount', () => {
   const baseline = compileMountedPart().component;
 
   let changed = createSingleBeamMachine();
-  changed = extendFromBeamEnd(changed, 'b1', 'b', [0.4, 0.45, -3.0]);
-  changed = extendFromBeamEnd(changed, 'b2', 'b', [2.6, 0.45, -3.0]);
+  changed = extendFromBeamEnd(changed, 'b1', 'b', [0.4, 0, -3.0]);
+  changed = extendFromBeamEnd(changed, 'b2', 'b', [2.6, 0, -3.0]);
   const after = compileMountedPart(changed).component;
 
   near(after.axis, baseline.axis);
@@ -59,6 +59,6 @@ test('beam roll is durable authored orientation and rotates the wheel mount fram
   const { component } = compileMountedPart(document);
 
   near(component.axis, [0, -1, 0]);
-  near(component.hostAnchorMachine, [0, 0.39, 0]);
-  near(component.center, [0, 0.31, 0]);
+  near(component.hostAnchorMachine, [0, -0.06, 0]);
+  near(component.center, [0, -0.14, 0]);
 });
