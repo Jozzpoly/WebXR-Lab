@@ -18,6 +18,32 @@ export function attachDesktopComponents({
   const canvas = view.renderer.domElement;
   let previewCandidate = null;
   let componentDrag = null;
+  const devTrace = {
+    pointerMoves: 0,
+    lastPointer: null,
+    lastBranch: 'idle',
+    lastCandidate: null,
+  };
+
+  if (typeof window !== 'undefined' && import.meta.env?.DEV) {
+    window.__riftworksDesktopInputEvidence = Object.freeze({
+      snapshot: () => ({
+        pointerMoves: devTrace.pointerMoves,
+        lastPointer: devTrace.lastPointer ? { ...devTrace.lastPointer } : null,
+        lastBranch: devTrace.lastBranch,
+        lastCandidate: devTrace.lastCandidate ? {
+          hostBeamId: devTrace.lastCandidate.hostBeamId,
+          mount: {
+            position: [...devTrace.lastCandidate.mount.position],
+            axis: [...devTrace.lastCandidate.mount.axis],
+          },
+          motorVelocity: devTrace.lastCandidate.motorVelocity,
+        } : null,
+        tool: getTool(),
+        buildMode: isBuildMode(),
+      }),
+    });
+  }
 
   const candidateAtPointer = (event) => {
     const hit = view.pickBeamSurface(event.clientX, event.clientY);
@@ -54,21 +80,36 @@ export function attachDesktopComponents({
   };
 
   const onPointerMove = (event) => {
-    if (updateComponentDrag(event)) return;
+    devTrace.pointerMoves += 1;
+    devTrace.lastPointer = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, buttons: event.buttons };
+    devTrace.lastCandidate = null;
+
+    if (updateComponentDrag(event)) {
+      devTrace.lastBranch = 'component-drag';
+      return;
+    }
 
     if (!isBuildMode() || getTool() !== 'powered-wheel') {
+      devTrace.lastBranch = 'inactive-tool';
       clearPreview();
       return;
     }
 
     if (componentLayer.pickPointer(event.clientX, event.clientY)) {
+      devTrace.lastBranch = 'existing-component';
       clearPreview();
       return;
     }
 
-    if (previewCandidate && componentLayer.pickPreviewPointer(event.clientX, event.clientY)) return;
+    if (previewCandidate && componentLayer.pickPreviewPointer(event.clientX, event.clientY)) {
+      devTrace.lastBranch = 'holding-preview';
+      devTrace.lastCandidate = previewCandidate;
+      return;
+    }
 
     previewCandidate = candidateAtPointer(event);
+    devTrace.lastCandidate = previewCandidate;
+    devTrace.lastBranch = previewCandidate ? 'beam-candidate' : 'no-beam-candidate';
     previewPoweredWheel(previewCandidate);
   };
 
