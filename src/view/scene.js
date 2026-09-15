@@ -400,12 +400,14 @@ export class RiftworksScene {
   }
 
   pickBeamSurface(clientX, clientY) {
+    this.authoredGroup.updateWorldMatrix(true, true);
     this.#setPointer(clientX, clientY);
     const hit = this.raycaster.intersectObjects([...this.beamMeshes.values()], false)[0];
     return this.#beamSurfaceFromHit(hit);
   }
 
   pickBeamSurfaceController(controller) {
+    this.authoredGroup.updateWorldMatrix(true, true);
     controller.updateWorldMatrix(true, false);
     const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
     const direction = new THREE.Vector3(0, 0, -1).transformDirection(controller.matrixWorld);
