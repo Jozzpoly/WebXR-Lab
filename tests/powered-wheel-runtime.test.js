@@ -5,15 +5,10 @@ import { compileMachine } from '../src/runtime/compile-machine.js';
 import { RapierMachineRuntime } from '../src/runtime/rapier-runtime.js';
 
 const axisComponent = (v, axis) => v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2];
-
-function elevatedSeedMachine(heightOffset = 1.5) {
-  const document = structuredClone(createSeedMachine());
-  for (const node of document.nodes) node.position[1] += heightOffset;
-  return document;
-}
+const elevatedRuntimeSpawn = Object.freeze({ position: [0, 1.5, 0], rotation: [0, 0, 0, 1] });
 
 test('powered wheel creates a real revolute motor consequence without authored mutation', async () => {
-  const document = attachPoweredWheel(elevatedSeedMachine(), 'n1', {
+  const document = attachPoweredWheel(createSeedMachine(), 'n1', {
     axis: [0, 0, 1],
     mountOffset: 0.18,
     motorVelocity: 8,
@@ -24,7 +19,7 @@ test('powered wheel creates a real revolute motor consequence without authored m
   assert.equal(plan.components.length, 1);
 
   const runtime = await RapierMachineRuntime.create();
-  runtime.start(plan);
+  runtime.start(plan, { spawnPose: elevatedRuntimeSpawn });
 
   const initial = runtime.sample();
   assert.ok(initial.has('island-1'));
@@ -64,7 +59,7 @@ test('opposite mount sides preserve one shared motor axis and rotation sign', as
   assert.ok(plan.components[1].center[0] > document.nodes[1].position[0]);
 
   const runtime = await RapierMachineRuntime.create();
-  runtime.start(plan);
+  runtime.start(plan, { spawnPose: elevatedRuntimeSpawn });
   for (let i = 0; i < 30; i += 1) runtime.step(1 / 90);
 
   const after = runtime.sample();
