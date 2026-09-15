@@ -127,6 +127,8 @@ export class ComponentInteractionLayer {
       this.targets.set(component.id, proxy);
       this.group.add(proxy);
     }
+
+    this.group.updateWorldMatrix(true, true);
   }
 
   #pointerRay(clientX, clientY) {
