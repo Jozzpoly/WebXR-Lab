@@ -123,7 +123,7 @@ Protected foundation behavior now includes:
 - desktop and XR transient input ownership isolation;
 - real browser execution of both the current desktop mouse path and the IWER controller path through RUN → STOP.
 
-The README consolidation may advance the branch past the runtime SHA above; the runtime checkpoint remains the cited evidence until a later code-bearing candidate earns a newer full gate.
+Documentation commits after `8095a2a…` consolidate this evidence but do not change runtime semantics. Any later code-bearing candidate must earn a newer full gate before replacing this cited runtime checkpoint.
 
 ## Evidence that is still missing
 
