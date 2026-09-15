@@ -2,28 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   attachPoweredWheel,
-  createSeedMachine,
   extendFromBeamEnd,
   machineFingerprint,
   moveBeamEnd,
 } from '../src/core/machine-document.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
+import { createSingleBeamMachine } from './helpers/machine-fixtures.js';
 
 const almost = (a, b, epsilon = 1e-9) => Math.abs(a - b) <= epsilon;
 
 test('moving a beam end edits the real structural part without exposing node identity', () => {
-  const original = createSeedMachine();
+  const original = createSingleBeamMachine();
   const fingerprint = machineFingerprint(original);
   const next = moveBeamEnd(original, 'b1', 'b', [0.8, 0.45, 0]);
 
   assert.equal(machineFingerprint(original), fingerprint);
-  assert.deepEqual(next.nodes.find((node) => node.id === 'n2').position, [0.8, 0.45, 0]);
-  assert.equal(next.revision, 1);
+  const movedNodeId = next.beams.find((beam) => beam.id === 'b1').b;
+  assert.deepEqual(next.nodes.find((node) => node.id === movedNodeId).position, [0.8, 0.45, 0]);
+  assert.equal(next.revision, original.revision + 1);
   assert.ok(almost(compileMachine(next).islands[0].beams[0].length, 1.2));
 });
 
 test('moving a shared beam end preserves welded topology', () => {
-  let document = createSeedMachine();
+  let document = createSingleBeamMachine();
   document = extendFromBeamEnd(document, 'b1', 'b', [0.4, 0.45, -0.7]);
   const next = moveBeamEnd(document, 'b1', 'b', [0.65, 0.45, 0.15]);
   const sharedNodeId = next.beams.find((beam) => beam.id === 'b1').b;
@@ -35,7 +36,7 @@ test('moving a shared beam end preserves welded topology', () => {
 });
 
 test('host-mounted components preserve their relative longitudinal anchor when a beam is resized', () => {
-  let document = createSeedMachine();
+  let document = createSingleBeamMachine();
   document = attachPoweredWheel(document, 'b1', {
     mount: { position: [0.3, 0.06, 0], axis: [0, 1, 0] },
   });
@@ -55,7 +56,7 @@ test('host-mounted components preserve their relative longitudinal anchor when a
 });
 
 test('extending from a beam end creates a new structural part while keeping topology internal', () => {
-  const document = createSeedMachine();
+  const document = createSingleBeamMachine();
   const next = extendFromBeamEnd(document, 'b1', 'b', [0.4, 0.45, -0.75]);
 
   assert.equal(next.beams.length, 2);
@@ -65,7 +66,7 @@ test('extending from a beam end creates a new structural part while keeping topo
 });
 
 test('structural edits refuse degenerate geometry instead of corrupting authored truth', () => {
-  const document = createSeedMachine();
+  const document = createSingleBeamMachine();
   const next = moveBeamEnd(document, 'b1', 'b', [-0.36, 0.45, 0]);
   assert.strictEqual(next, document);
   assert.equal(machineFingerprint(next), machineFingerprint(document));
