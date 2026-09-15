@@ -24,6 +24,28 @@ function beamLength(document, beam) {
   return distance(a, b);
 }
 
+function physicalEndpoint(document, target, fallbackPosition, label) {
+  if (target) {
+    const nodeId = beamEndNodeId(document, target.beamId, target.end);
+    const node = document.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) throw new Error(`${label} target references missing topology`);
+    return { nodeId, position: [...node.position], reused: true };
+  }
+  if (!finiteVec3(fallbackPosition)) throw new Error(`${label} position must be a finite vec3`);
+  return { nodeId: null, position: [...fallbackPosition], reused: false };
+}
+
+export function createEmptyMachine() {
+  return {
+    version: MACHINE_VERSION,
+    revision: 0,
+    nextIds: { node: 1, beam: 1, component: 1 },
+    nodes: [],
+    beams: [],
+    components: [],
+  };
+}
+
 export function createSeedMachine() {
   return {
     version: MACHINE_VERSION,
@@ -109,6 +131,53 @@ export function machineFingerprint(document) {
   return JSON.stringify(document);
 }
 
+export function createBeam(document, startPosition, endPosition, options = {}) {
+  assertValidMachine(document);
+  const start = physicalEndpoint(document, options.startTargetBeamEnd ?? null, startPosition, 'beam start');
+  const end = physicalEndpoint(document, options.endTargetBeamEnd ?? null, endPosition, 'beam end');
+
+  if (start.nodeId && end.nodeId && start.nodeId === end.nodeId) return document;
+  if (distance(start.position, end.position) < MIN_BEAM_LENGTH) return document;
+
+  if (start.nodeId && end.nodeId) {
+    const duplicate = document.beams.some((beam) =>
+      (beam.a === start.nodeId && beam.b === end.nodeId) ||
+      (beam.a === end.nodeId && beam.b === start.nodeId));
+    if (duplicate) return document;
+  }
+
+  const roll = options.roll ?? 0;
+  const thickness = options.thickness ?? 0.12;
+  const density = options.density ?? 420;
+  if (!Number.isFinite(roll)) throw new Error('beam roll must be finite');
+  if (!(Number.isFinite(thickness) && thickness > 0)) throw new Error('beam thickness must be positive');
+  if (!(Number.isFinite(density) && density > 0)) throw new Error('beam density must be positive');
+
+  const next = clone(document);
+  let a = start.nodeId;
+  let b = end.nodeId;
+
+  if (!a) {
+    a = `n${next.nextIds.node++}`;
+    next.nodes.push({ id: a, position: [...start.position] });
+  }
+  if (!b) {
+    b = `n${next.nextIds.node++}`;
+    next.nodes.push({ id: b, position: [...end.position] });
+  }
+
+  next.beams.push({
+    id: `b${next.nextIds.beam++}`,
+    a,
+    b,
+    roll,
+    thickness,
+    density,
+  });
+  next.revision += 1;
+  return assertValidMachine(next);
+}
+
 export function extendFromNode(document, startNodeId, endPosition, targetNodeId = null) {
   assertValidMachine(document);
   if (!finiteVec3(endPosition)) throw new Error('endPosition must be a finite vec3');
@@ -149,11 +218,11 @@ export function extendFromNode(document, startNodeId, endPosition, targetNodeId 
 
 export function extendFromBeamEnd(document, beamId, end, endPosition, targetBeamEnd = null) {
   assertValidMachine(document);
-  const startNodeId = beamEndNodeId(document, beamId, end);
-  const targetNodeId = targetBeamEnd
-    ? beamEndNodeId(document, targetBeamEnd.beamId, targetBeamEnd.end)
-    : null;
-  return extendFromNode(document, startNodeId, endPosition, targetNodeId);
+  const startPosition = document.nodes.find((node) => node.id === beamEndNodeId(document, beamId, end))?.position;
+  return createBeam(document, startPosition, endPosition, {
+    startTargetBeamEnd: { beamId, end },
+    endTargetBeamEnd: targetBeamEnd,
+  });
 }
 
 export function moveBeamEnd(document, beamId, end, position) {
@@ -182,6 +251,21 @@ export function moveBeamEnd(document, beamId, end, position) {
     }
   }
 
+  next.revision += 1;
+  return assertValidMachine(next);
+}
+
+export function removeBeam(document, beamId) {
+  assertValidMachine(document);
+  const beamIndex = document.beams.findIndex((beam) => beam.id === beamId);
+  if (beamIndex < 0) throw new Error(`unknown beam: ${beamId}`);
+
+  const next = clone(document);
+  next.beams.splice(beamIndex, 1);
+  next.components = next.components.filter((component) => component.hostBeamId !== beamId);
+
+  const referencedNodes = new Set(next.beams.flatMap((beam) => [beam.a, beam.b]));
+  next.nodes = next.nodes.filter((node) => referencedNodes.has(node.id));
   next.revision += 1;
   return assertValidMachine(next);
 }
