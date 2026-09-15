@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MIN_BEAM_LENGTH } from '../core/machine-document.js';
 import { nearestAuthoredHit } from './authored-picking.js';
-import { pointOnCameraFacingWorkspacePlane, snapWorkspacePoint } from './desktop-spatial-drag.js';
+import { pointOnCameraFacingMachinePlane, snapMachinePoint } from './desktop-spatial-drag.js';
 import { beamEndPosition, nearestBeamEnd } from './structural-placement.js';
 
 export function attachDesktopBuilder({
@@ -27,7 +27,7 @@ export function attachDesktopBuilder({
     targetBeamEnd: null,
   };
 
-  const snap = (point) => getGridEnabled() ? snapWorkspacePoint(point, 0.25) : point.clone();
+  const snap = (point) => getGridEnabled() ? snapMachinePoint(point, 0.25) : point.clone();
 
   const clearState = (pointerId = state.pointerId) => {
     view.hideGhost();
@@ -43,7 +43,7 @@ export function attachDesktopBuilder({
 
   const updateDrag = (event) => {
     if (!state.operation || !state.dragAnchor || !isBuildMode() || getTool() !== 'beam') return;
-    const point = pointOnCameraFacingWorkspacePlane(
+    const point = pointOnCameraFacingMachinePlane(
       view,
       event.clientX,
       event.clientY,
@@ -128,9 +128,7 @@ export function attachDesktopBuilder({
     if (event.button !== 0 || !isBuildMode()) return;
 
     const componentLayer = view.componentInteractionLayer;
-    if (getTool() === 'powered-wheel' && componentLayer?.pickPreviewPointer(event.clientX, event.clientY)) {
-      return;
-    }
+    if (getTool() === 'powered-wheel' && componentLayer?.pickPreviewPointer(event.clientX, event.clientY)) return;
 
     if (getTool() === 'beam') {
       const handle = structuralLayer.pickPointer(event.clientX, event.clientY);
@@ -146,9 +144,7 @@ export function attachDesktopBuilder({
       componentLayer?.pickPointerHit(event.clientX, event.clientY) ?? null,
     );
 
-    if (authoredHit?.kind === 'component') {
-      return;
-    }
+    if (authoredHit?.kind === 'component') return;
 
     if (authoredHit?.kind === 'beam') {
       selectBeam(authoredHit.beamId);

@@ -61,7 +61,7 @@ export class ComponentInteractionLayer {
     this.view = view;
     this.view.componentInteractionLayer = this;
     this.group = new THREE.Group();
-    this.view.workspaceRoot.add(this.group);
+    this.view.machineAuthoringRoot.add(this.group);
 
     this.targets = new Map();
     this.raycaster = new THREE.Raycaster();
@@ -131,12 +131,12 @@ export class ComponentInteractionLayer {
     return this.pickControllerHit(controller)?.componentId ?? null;
   }
 
-  nearest(localPoint, minimumRadius = 0.24) {
+  nearest(machinePoint, minimumRadius = 0.24) {
     let best = null;
     let bestDistance = Infinity;
     for (const [id, proxy] of this.targets) {
       const reach = Math.max(minimumRadius, proxy.userData.componentRadius ?? 0);
-      const distance = localPoint.distanceTo(proxy.position);
+      const distance = machinePoint.distanceTo(proxy.position);
       if (distance <= reach && distance < bestDistance) {
         best = id;
         bestDistance = distance;

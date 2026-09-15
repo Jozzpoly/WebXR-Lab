@@ -32,7 +32,7 @@ export class StructuralInteractionLayer {
   constructor(view) {
     this.view = view;
     this.group = new THREE.Group();
-    this.view.workspaceRoot.add(this.group);
+    this.view.machineAuthoringRoot.add(this.group);
 
     this.selection = new THREE.Mesh(selectionGeometry, selectionMaterial);
     this.selection.visible = false;
@@ -119,11 +119,11 @@ export class StructuralInteractionLayer {
     return hit?.object.userData.structuralHandle ?? null;
   }
 
-  nearest(localPoint, radius = 0.13) {
+  nearest(machinePoint, radius = 0.13) {
     let best = null;
     let bestDistance = radius;
     for (const target of this.targets) {
-      const distance = localPoint.distanceTo(target.position);
+      const distance = machinePoint.distanceTo(target.position);
       if (distance <= bestDistance) {
         best = target.userData.structuralHandle;
         bestDistance = distance;
@@ -132,7 +132,7 @@ export class StructuralInteractionLayer {
     return best;
   }
 
-  getHandleLocalPosition(handle, target = new THREE.Vector3()) {
+  getHandleMachinePosition(handle, target = new THREE.Vector3()) {
     const mesh = this.targets.find((candidate) => {
       const data = candidate.userData.structuralHandle;
       return data?.kind === handle?.kind && data?.beamId === handle?.beamId && data?.end === handle?.end;

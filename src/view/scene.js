@@ -1,10 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MACHINE_YARD_WORLD, resolveRunSpawn, surfaceTop, transformPoint } from '../runtime/machine-yard-world.js';
+import { MACHINE_PRESENTATION_OFFSET, WORKSPACE_WORLD_POSITION } from './authoring-space.js';
 import { SpatialToolPanel } from './spatial-panel.js';
-
-export const BUILD_Y = 0.45;
-export const WORKSPACE_WORLD_POSITION = [0, 0.72, -0.78];
 
 const beamGeometry = new THREE.BoxGeometry(1, 1, 1);
 const authoredBeamMaterial = new THREE.MeshStandardMaterial({ color: 0x3d93b5, roughness: 0.32, metalness: 0.46 });
@@ -104,9 +102,13 @@ export class RiftworksScene {
     this.workspaceVisualGroup = new THREE.Group();
     this.workspaceRoot.add(this.workspaceVisualGroup);
 
+    this.machineAuthoringRoot = new THREE.Group();
+    this.machineAuthoringRoot.position.set(...MACHINE_PRESENTATION_OFFSET);
+    this.workspaceRoot.add(this.machineAuthoringRoot);
+
     this.authoredGroup = new THREE.Group();
     this.runtimeGroup = new THREE.Group();
-    this.workspaceRoot.add(this.authoredGroup);
+    this.machineAuthoringRoot.add(this.authoredGroup);
     this.scene.add(this.runtimeGroup);
     this.runtimeGroup.visible = false;
 
@@ -125,7 +127,7 @@ export class RiftworksScene {
 
     this.ghostBeam = new THREE.Mesh(beamGeometry, ghostMaterial);
     this.ghostBeam.visible = false;
-    this.workspaceRoot.add(this.ghostBeam);
+    this.machineAuthoringRoot.add(this.ghostBeam);
 
     this.spatialPanel = new SpatialToolPanel();
     this.spatialPanel.group.visible = false;
@@ -196,7 +198,7 @@ export class RiftworksScene {
     this.workspaceVisualGroup.add(deckGrid);
 
     const buildGrid = new THREE.GridHelper(1.55, 10, 0x67dfff, 0x2b6178);
-    buildGrid.position.y = BUILD_Y;
+    buildGrid.position.y = MACHINE_PRESENTATION_OFFSET[1];
     buildGrid.material.transparent = true;
     buildGrid.material.opacity = 0.15;
     this.workspaceVisualGroup.add(buildGrid);
@@ -236,6 +238,16 @@ export class RiftworksScene {
   workspaceToWorldPoint(localPoint, target = new THREE.Vector3()) {
     this.workspaceRoot.updateMatrixWorld(true);
     return this.workspaceRoot.localToWorld(target.copy(localPoint));
+  }
+
+  worldToMachinePoint(worldPoint, target = new THREE.Vector3()) {
+    this.machineAuthoringRoot.updateMatrixWorld(true);
+    return this.machineAuthoringRoot.worldToLocal(target.copy(worldPoint));
+  }
+
+  machineToWorldPoint(machinePoint, target = new THREE.Vector3()) {
+    this.machineAuthoringRoot.updateMatrixWorld(true);
+    return this.machineAuthoringRoot.localToWorld(target.copy(machinePoint));
   }
 
   renderAuthored(_document, plan) {
@@ -316,7 +328,7 @@ export class RiftworksScene {
   setMode(mode) {
     this.mode = mode;
     const running = mode === 'run';
-    this.authoredGroup.visible = !running;
+    this.machineAuthoringRoot.visible = !running;
     this.workspaceVisualGroup.visible = !running;
     this.runtimeGroup.visible = running;
     this.ghostBeam.visible = false;
@@ -404,12 +416,12 @@ export class RiftworksScene {
 
   pointOnBuildPlane(clientX, clientY) {
     this.#setPointer(clientX, clientY);
-    const planePoint = this.workspaceToWorldPoint(this.tempPoint.set(0, BUILD_Y, 0), this.tempPoint2);
-    this.tempNormal.set(0, 1, 0).transformDirection(this.workspaceRoot.matrixWorld);
+    const planePoint = this.machineToWorldPoint(this.tempPoint.set(0, 0, 0), this.tempPoint2);
+    this.tempNormal.set(0, 1, 0).transformDirection(this.machineAuthoringRoot.matrixWorld);
     this.buildPlane.setFromNormalAndCoplanarPoint(this.tempNormal, planePoint);
     const worldHit = new THREE.Vector3();
     if (!this.raycaster.ray.intersectPlane(this.buildPlane, worldHit)) return null;
-    return this.worldToWorkspacePoint(worldHit, worldHit);
+    return this.worldToMachinePoint(worldHit, worldHit);
   }
 
   render() {
