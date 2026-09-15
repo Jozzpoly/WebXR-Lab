@@ -123,6 +123,16 @@ class CdpClient {
   }
 }
 
+async function stopProcess(process, timeoutMs = 1200) {
+  if (process.exitCode !== null || process.signalCode !== null) return;
+  process.kill('SIGTERM');
+  await Promise.race([
+    new Promise((resolve) => process.once('exit', resolve)),
+    wait(timeoutMs),
+  ]);
+  if (process.exitCode === null && process.signalCode === null) process.kill('SIGKILL');
+}
+
 async function main() {
   const chrome = findChrome();
   if (!chrome) throw new Error('No system Chrome/Chromium binary found on CI runner');
@@ -239,9 +249,12 @@ async function main() {
     throw error;
   } finally {
     client?.close();
-    vite.kill('SIGTERM');
-    chromeProcess.kill('SIGTERM');
-    rmSync(profile, { recursive: true, force: true });
+    await Promise.allSettled([stopProcess(vite), stopProcess(chromeProcess)]);
+    try {
+      rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    } catch {
+      // CI workspace is ephemeral; cleanup must never mask rehearsal evidence.
+    }
   }
 }
 
