@@ -161,42 +161,24 @@ function projectMachine(point, camera, rect) {
   };
 }
 
-function buildBeamMeshes(document) {
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
-  const meshes = [];
-  for (const island of compileMachine(document).islands) {
-    for (const beam of island.beams) {
-      const mesh = new THREE.Mesh(geometry);
-      mesh.position.set(...beam.machinePosition).add(MACHINE_WORLD_OFFSET);
-      mesh.quaternion.set(...beam.machineRotation);
-      mesh.scale.set(beam.length, beam.thickness, beam.thickness);
-      mesh.userData.beamId = beam.id;
-      mesh.updateMatrixWorld(true);
-      meshes.push(mesh);
-    }
+async function browserProjectMachine(client, point) {
+  const projected = await client.evaluate(`window.__riftworksDesktopEvidence?.projectMachinePoint(${JSON.stringify(point)}) ?? null`);
+  if (!projected || !Number.isFinite(projected.x) || !Number.isFinite(projected.y)) {
+    throw new Error(`browser could not project machine point ${JSON.stringify(point)}: ${JSON.stringify(projected)}`);
   }
-  return meshes;
+  return projected;
 }
 
-function beamSurfaceAtScreen(document, screen, camera, rect) {
-  const ndc = new THREE.Vector2(
-    ((screen.x - rect.x) / rect.width) * 2 - 1,
-    -((screen.y - rect.y) / rect.height) * 2 + 1,
-  );
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(ndc, camera);
-  const hit = raycaster.intersectObjects(buildBeamMeshes(document), false)[0];
-  if (!hit?.face) return null;
-  const geometryLocal = hit.object.worldToLocal(hit.point.clone());
-  return {
-    beamId: hit.object.userData.beamId,
-    localPosition: [
-      geometryLocal.x * hit.object.scale.x,
-      geometryLocal.y * hit.object.scale.y,
-      geometryLocal.z * hit.object.scale.z,
-    ],
-    localNormal: hit.face.normal.toArray(),
-  };
+async function browserBeamSurface(client, point) {
+  return client.evaluate(`window.__riftworksDesktopEvidence?.beamSurfaceAt(${point.x}, ${point.y}) ?? null`);
+}
+
+async function browserPreviewPosition(client) {
+  return client.evaluate('window.__riftworksDesktopEvidence?.previewMachinePosition() ?? null');
+}
+
+async function browserComponentPosition(client, componentId) {
+  return client.evaluate(`window.__riftworksDesktopEvidence?.componentMachinePosition(${JSON.stringify(componentId)}) ?? null`);
 }
 
 async function mouseClick(client, point) {
@@ -311,6 +293,9 @@ async function main() {
     await loaded;
 
     const initial = await waitForUi(client, (ui) => ui.mode === 'BUILD' && ui.beams === 0 && ui.wheels === 0, 'blank desktop workshop');
+    const evidenceReady = await client.evaluate('Boolean(window.__riftworksDesktopEvidence)');
+    if (!evidenceReady) throw new Error('read-only desktop evidence hook is unavailable in Vite dev mode');
+
     const rect = await client.evaluate(`(() => {
       const r = document.querySelector('canvas')?.getBoundingClientRect();
       return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
@@ -349,15 +334,17 @@ async function main() {
     mirror = extendFromBeamEnd(mirror, 'b1', 'b', extensionEnd);
 
     await clickElement(client, '#wheelToolButton');
+    await waitForUi(client, (ui) => ui.truth?.includes('Powered Wheel') && !ui.truth?.includes('Selected b1'), 'real mouse wheel tool selection');
+
     const b1 = compileMachine(mirror).islands.flatMap((island) => island.beams).find((beam) => beam.id === 'b1');
     if (!b1) throw new Error('mirror b1 missing before wheel placement');
-    const beamProbe = projectMachine(b1.machinePosition, camera, rect);
+    const beamProbe = await browserProjectMachine(client, b1.machinePosition);
     await requireCanvasPoint(client, beamProbe, 'wheel beam probe');
     await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: beamProbe.x, y: beamProbe.y });
     await wait(100);
 
-    const surface = beamSurfaceAtScreen(mirror, beamProbe, camera, rect);
-    if (!surface) throw new Error('could not resolve mirrored beam surface for wheel preview');
+    const surface = await browserBeamSurface(client, beamProbe);
+    if (!surface) throw new Error('browser could not resolve real beam surface for wheel preview');
     const candidate = proposePoweredWheelPlacement(mirror, surface.beamId, surface.localPosition, surface.localNormal);
     let previewDoc = attachPoweredWheel(mirror, candidate.hostBeamId, {
       mount: candidate.mount,
@@ -365,7 +352,15 @@ async function main() {
     });
     const previewWheel = compileMachine(previewDoc).components.at(-1);
     if (!previewWheel) throw new Error('mirror wheel preview missing');
-    const previewScreen = projectMachine(previewWheel.center, camera, rect);
+
+    const actualPreviewMachine = await browserPreviewPosition(client);
+    if (!actualPreviewMachine) throw new Error('browser produced no wheel preview after real beam hover');
+    const previewDelta = Math.hypot(...actualPreviewMachine.map((value, index) => value - previewWheel.center[index]));
+    if (previewDelta > 1e-4) {
+      throw new Error(`browser/core preview disagreement: ${previewDelta} m · browser ${JSON.stringify(actualPreviewMachine)} · core ${JSON.stringify(previewWheel.center)}`);
+    }
+
+    const previewScreen = await browserProjectMachine(client, actualPreviewMachine);
     await requireCanvasPoint(client, previewScreen, 'wheel preview');
     await mouseClick(client, previewScreen);
     await waitForUi(client, (ui) => ui.wheels === 1 && ui.detail?.startsWith('Powered wheel mounted on'), 'real mouse wheel placement');
@@ -374,14 +369,17 @@ async function main() {
     const authoredWheel = compileMachine(mirror).components.find((component) => component.id === 'c1');
     const b2 = compileMachine(mirror).islands.flatMap((island) => island.beams).find((beam) => beam.id === 'b2');
     if (!authoredWheel || !b2) throw new Error('mirror wheel/b2 missing before direct rehost');
-    const wheelScreen = projectMachine(authoredWheel.center, camera, rect);
-    const rehostProbe = projectMachine(b2.machinePosition, camera, rect);
+
+    const actualWheelMachine = await browserComponentPosition(client, 'c1');
+    if (!actualWheelMachine) throw new Error('browser component proxy c1 missing before direct rehost');
+    const wheelScreen = await browserProjectMachine(client, actualWheelMachine);
+    const rehostProbe = await browserProjectMachine(client, b2.machinePosition);
     await requireCanvasPoint(client, wheelScreen, 'existing wheel');
     await requireCanvasPoint(client, rehostProbe, 'wheel rehost target');
 
-    const rehostSurface = beamSurfaceAtScreen(mirror, rehostProbe, camera, rect);
+    const rehostSurface = await browserBeamSurface(client, rehostProbe);
     if (!rehostSurface || rehostSurface.beamId !== 'b2') {
-      throw new Error(`mirror rehost ray did not resolve b2: ${JSON.stringify(rehostSurface)}`);
+      throw new Error(`browser rehost ray did not resolve b2: ${JSON.stringify(rehostSurface)}`);
     }
     const rehostCandidate = proposePoweredWheelPlacement(mirror, rehostSurface.beamId, rehostSurface.localPosition, rehostSurface.localNormal);
     await mouseDrag(client, wheelScreen, rehostProbe);
