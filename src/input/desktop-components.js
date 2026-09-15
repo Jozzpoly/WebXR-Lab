@@ -12,6 +12,7 @@ export function attachDesktopComponents({
   selectComponent,
 }) {
   const canvas = view.renderer.domElement;
+  let previewCandidate = null;
 
   const candidateAtPointer = (event) => {
     const hit = view.pickBeamSurface(event.clientX, event.clientY);
@@ -24,16 +25,28 @@ export function attachDesktopComponents({
     );
   };
 
+  const clearPreview = () => {
+    previewCandidate = null;
+    clearPoweredWheelPreview();
+  };
+
   const onPointerMove = (event) => {
     if (!isBuildMode() || getTool() !== 'powered-wheel') {
-      clearPoweredWheelPreview();
+      clearPreview();
       return;
     }
+
     if (componentLayer.pickPointer(event.clientX, event.clientY)) {
-      clearPoweredWheelPreview();
+      clearPreview();
       return;
     }
-    previewPoweredWheel(candidateAtPointer(event));
+
+    if (previewCandidate && componentLayer.pickPreviewPointer(event.clientX, event.clientY)) {
+      return;
+    }
+
+    previewCandidate = candidateAtPointer(event);
+    previewPoweredWheel(previewCandidate);
   };
 
   const onPointerDown = (event) => {
@@ -41,21 +54,22 @@ export function attachDesktopComponents({
 
     const componentId = componentLayer.pickPointer(event.clientX, event.clientY);
     if (componentId) {
-      clearPoweredWheelPreview();
+      clearPreview();
       selectComponent(componentId);
       event.preventDefault();
       return;
     }
 
     if (getTool() !== 'powered-wheel') return;
-    const candidate = candidateAtPointer(event);
-    if (!candidate) return;
-    clearPoweredWheelPreview();
+    if (!previewCandidate || !componentLayer.pickPreviewPointer(event.clientX, event.clientY)) return;
+
+    const candidate = previewCandidate;
+    clearPreview();
     commitPoweredWheel(candidate);
     event.preventDefault();
   };
 
-  const onPointerLeave = () => clearPoweredWheelPreview();
+  const onPointerLeave = () => clearPreview();
 
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerdown', onPointerDown);
