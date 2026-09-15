@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSeedMachine, extendFromBeamEnd } from '../src/core/machine-document.js';
+import { createBeam, extendFromBeamEnd } from '../src/core/machine-document.js';
 import { beamEndPosition, nearestBeamEnd, nearestBeamSurface } from '../src/input/structural-placement.js';
+import { createSingleBeamMachine } from './helpers/machine-fixtures.js';
 
 test('beam endpoint targeting exposes part references instead of node ids', () => {
-  const document = createSeedMachine();
+  const document = createSingleBeamMachine();
   assert.deepEqual(beamEndPosition(document, 'b1', 'a'), [-0.4, 0.45, 0]);
   assert.deepEqual(beamEndPosition(document, 'b1', 'b'), [0.4, 0.45, 0]);
 
@@ -18,7 +19,7 @@ test('beam endpoint targeting exposes part references instead of node ids', () =
 });
 
 test('shared welded endpoint is one physical target even when multiple beams reference it', () => {
-  let document = createSeedMachine();
+  let document = createSingleBeamMachine();
   document = extendFromBeamEnd(document, 'b1', 'b', [0.4, 0.45, -0.6]);
 
   const target = nearestBeamEnd(document, [0.405, 0.45, 0.005], 0.08);
@@ -33,22 +34,14 @@ test('shared welded endpoint is one physical target even when multiple beams ref
 });
 
 test('nearest surface resolves a concrete host part and remains stable under unrelated topology', () => {
-  const base = createSeedMachine();
+  const base = createSingleBeamMachine();
   const query = [0.1, 0.53, 0.01];
   const before = nearestBeamSurface(base, query, 0.2);
   assert.ok(before);
   assert.equal(before.beamId, 'b1');
   assert.ok(before.distance < 0.03);
 
-  const expanded = structuredClone(base);
-  expanded.nodes.push(
-    { id: 'n90', position: [4, 0.45, 4] },
-    { id: 'n91', position: [5, 0.45, 4] },
-  );
-  expanded.beams.push({ id: 'b90', a: 'n90', b: 'n91', roll: 0, thickness: 0.12, density: 420 });
-  expanded.nextIds.node = 92;
-  expanded.nextIds.beam = 91;
-
+  const expanded = createBeam(base, [4, 0.45, 4], [5, 0.45, 4]);
   const after = nearestBeamSurface(expanded, query, 0.2);
   assert.equal(after.beamId, before.beamId);
   assert.deepEqual(after.localNormal, before.localNormal);
