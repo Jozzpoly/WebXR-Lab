@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { machineFingerprint } from '../core/machine-document.js';
-import { WORKSPACE_HANDLE_LOCAL_POSITION } from '../view/workspace-handle.js';
+import { beamEndPosition } from '../input/structural-placement.js';
 
 const TRIGGER = 'trigger';
 const SQUEEZE = 'squeeze';
@@ -27,14 +27,14 @@ function requireState(condition, message) {
 function aimController(controller, from, target) {
   const direction = target.clone().sub(from).normalize();
   const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), direction);
-  controller.position.set(from.x, from.y, from.z);
-  controller.quaternion.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
+  controller.position.copy(from);
+  controller.quaternion.copy(quaternion);
 }
 
 async function setPose(view, device, controller, position, target = null) {
   if (target) aimController(controller, position, target);
   else {
-    controller.position.set(position.x, position.y, position.z);
+    controller.position.copy(position);
     controller.quaternion.set(0, 0, 0, 1);
   }
   device.notifyStateChange();
@@ -50,13 +50,29 @@ async function pulse(view, device, controller, button) {
   await xrFrames(view, 3);
 }
 
+async function dragGrip(view, device, controller, from, to) {
+  await setPose(view, device, controller, from);
+  controller.updateButtonValue(SQUEEZE, 1);
+  device.notifyStateChange();
+  await xrFrames(view, 4);
+  controller.position.copy(to);
+  device.notifyStateChange();
+  await xrFrames(view, 6);
+  controller.updateButtonValue(SQUEEZE, 0);
+  device.notifyStateChange();
+  await xrFrames(view, 4);
+}
+
 export function installIwerRehearsal({
   emulation,
   view,
   componentLayer,
+  structuralLayer,
+  xrConstruction,
   getDocument,
   getTool,
   getSelectedComponentId,
+  getSelectedBeamId,
   getMode,
   report,
 }) {
@@ -80,6 +96,7 @@ export function installIwerRehearsal({
     requireState(target, `spatial action ${action} is not currently available`);
     return target;
   };
+  const toWorld = (local) => view.workspaceToWorldPoint(new THREE.Vector3(...local), new THREE.Vector3());
   const rayOrigin = new THREE.Vector3(0.28, 1.38, -0.12);
 
   const run = async () => {
@@ -94,20 +111,74 @@ export function installIwerRehearsal({
       await xrFrames(view, 6);
       requireState(getMode() === 'build', 'rehearsal must start in BUILD');
       requireState(getDocument().components.length === 0, 'rehearsal expects a fresh seed machine');
+      requireState(getDocument().beams.length === 1, 'rehearsal expects one seed beam');
       mark('fresh-build');
+
+      await setPose(view, device, controller, rayOrigin, actionTarget('beam'));
+      await pulse(view, device, controller, TRIGGER);
+      requireState(getTool() === 'beam', 'trigger ray did not select BEAM');
+
+      const seed = getDocument().beams[0];
+      const a = beamEndPosition(getDocument(), seed.id, 'a');
+      const b = beamEndPosition(getDocument(), seed.id, 'b');
+      requireState(a && b, 'seed beam endpoints unavailable');
+      const beamCenter = toWorld([(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5]);
+      await setPose(view, device, controller, rayOrigin, beamCenter);
+      await pulse(view, device, controller, TRIGGER);
+      requireState(getSelectedBeamId() === seed.id, 'trigger ray did not select the real seed beam');
+      requireState(structuralLayer.selectedBeamId === seed.id, 'selected beam did not expose structural handles');
+      mark('part-select');
+
+      const extendHandle = { kind: 'extend', beamId: seed.id, end: 'b' };
+      const extendFrom = xrConstruction.getBeamHandleWorldPosition(extendHandle, new THREE.Vector3());
+      requireState(extendFrom, 'extend handle world pose missing');
+      const extendTo = toWorld([b[0], b[1], b[2] - 0.45]);
+      await dragGrip(view, device, controller, extendFrom, extendTo);
+      requireState(getDocument().beams.length === 2, 'EXTEND handle did not author a second structural beam');
+      mark('beam-extend');
+
+      const extension = getDocument().beams.find((beam) => beam.id !== seed.id);
+      requireState(extension, 'new structural beam identity missing');
+      const extensionA = beamEndPosition(getDocument(), extension.id, 'a');
+      const extensionB = beamEndPosition(getDocument(), extension.id, 'b');
+      const extensionCenter = toWorld([
+        (extensionA[0] + extensionB[0]) * 0.5,
+        (extensionA[1] + extensionB[1]) * 0.5,
+        (extensionA[2] + extensionB[2]) * 0.5,
+      ]);
+      await setPose(view, device, controller, rayOrigin, extensionCenter);
+      await pulse(view, device, controller, TRIGGER);
+      requireState(getSelectedBeamId() === extension.id, 'new beam could not be selected as a real part');
+
+      const moveHandle = { kind: 'move', beamId: extension.id, end: 'b' };
+      const moveFrom = xrConstruction.getBeamHandleWorldPosition(moveHandle, new THREE.Vector3());
+      requireState(moveFrom, 'move handle world pose missing');
+      const movedTargetLocal = [extensionB[0] + 0.18, extensionB[1], extensionB[2] - 0.12];
+      await dragGrip(view, device, controller, moveFrom, toWorld(movedTargetLocal));
+      const movedEnd = beamEndPosition(getDocument(), extension.id, 'b');
+      requireState(
+        Math.hypot(movedEnd[0] - extensionB[0], movedEnd[1] - extensionB[1], movedEnd[2] - extensionB[2]) > 0.1,
+        'MOVE handle did not materially reshape the structural part',
+      );
+      mark('beam-reshape');
 
       await setPose(view, device, controller, rayOrigin, actionTarget('powered-wheel'));
       await pulse(view, device, controller, TRIGGER);
       requireState(getTool() === 'powered-wheel', 'trigger ray did not select WHEEL');
       mark('ray-tool-select');
 
-      const node = getDocument().nodes[0];
-      requireState(node, 'seed socket missing');
-      const nodeWorld = view.workspaceRoot.localToWorld(new THREE.Vector3(...node.position));
-      await setPose(view, device, controller, nodeWorld);
+      const seedAfterEditA = beamEndPosition(getDocument(), seed.id, 'a');
+      const seedAfterEditB = beamEndPosition(getDocument(), seed.id, 'b');
+      const wheelProbeLocal = [
+        (seedAfterEditA[0] + seedAfterEditB[0]) * 0.5,
+        (seedAfterEditA[1] + seedAfterEditB[1]) * 0.5,
+        (seedAfterEditA[2] + seedAfterEditB[2]) * 0.5 + 0.1,
+      ];
+      const wheelProbe = toWorld(wheelProbeLocal);
+      await setPose(view, device, controller, wheelProbe);
       await xrFrames(view, 4);
-      requireState(componentLayer.hasPreview(), 'grip proximity did not produce wheel preview');
-      mark('pre-placement-preview');
+      requireState(componentLayer.hasPreview(), 'beam-surface proximity did not produce wheel preview');
+      mark('surface-mount-preview');
 
       await pulse(view, device, controller, SQUEEZE);
       requireState(getDocument().components.length === 1, 'squeeze did not author one powered wheel');
@@ -121,19 +192,22 @@ export function installIwerRehearsal({
       requireState(getSelectedComponentId() === wheelId, 'direct squeeze did not select existing wheel');
       mark('direct-component-select');
 
-      const beforeReverse = getDocument().components.find((component) => component.id === wheelId);
+      const beforeReverse = structuredClone(getDocument().components.find((component) => component.id === wheelId));
       requireState(beforeReverse, 'selected wheel disappeared before edit');
-      const velocityBefore = beforeReverse.motorVelocity;
       await setPose(view, device, controller, rayOrigin, actionTarget('wheel-reverse'));
       await pulse(view, device, controller, TRIGGER);
       const afterReverse = getDocument().components.find((component) => component.id === wheelId);
-      requireState(afterReverse?.id === wheelId && afterReverse.motorVelocity === -velocityBefore, 'REVERSE did not preserve identity and invert motor velocity');
+      requireState(afterReverse?.id === wheelId && afterReverse.motorVelocity === -beforeReverse.motorVelocity, 'REVERSE did not preserve identity and invert motor velocity');
 
-      const sideBefore = afterReverse.side;
+      const beforeMirror = structuredClone(afterReverse);
       await setPose(view, device, controller, rayOrigin, actionTarget('wheel-flip'));
       await pulse(view, device, controller, TRIGGER);
-      const afterFlip = getDocument().components.find((component) => component.id === wheelId);
-      requireState(afterFlip?.id === wheelId && afterFlip.side === -sideBefore, 'FLIP did not preserve identity and invert mount side');
+      const afterMirror = getDocument().components.find((component) => component.id === wheelId);
+      const axisDot = beforeMirror.mount.axis.reduce((sum, value, index) => sum + value * afterMirror.mount.axis[index], 0);
+      requireState(
+        afterMirror?.id === wheelId && axisDot < -0.99 && afterMirror.motorVelocity === -beforeMirror.motorVelocity,
+        'MIRROR did not preserve identity while mirroring axle and coherent motor intent',
+      );
       mark('contextual-wheel-edit');
 
       await setPose(view, device, controller, rayOrigin, actionTarget('wheel-done'));
@@ -141,7 +215,7 @@ export function installIwerRehearsal({
       requireState(getSelectedComponentId() === null, 'DONE did not close component editing');
 
       const authoredBeforeWorkspaceMove = machineFingerprint(getDocument());
-      const handleWorld = view.workspaceRoot.localToWorld(new THREE.Vector3(...WORKSPACE_HANDLE_LOCAL_POSITION));
+      const handleWorld = xrConstruction.getWorkspaceHandleWorldPosition(new THREE.Vector3());
       await setPose(view, device, controller, handleWorld);
       controller.updateButtonValue(SQUEEZE, 1);
       device.notifyStateChange();
@@ -191,6 +265,6 @@ export function installIwerRehearsal({
   view.renderer.xr.addEventListener('sessionstart', () => {
     run();
   });
-  report('XR rehearsal armed. Enter VR once; IWER will execute the bounded controller-path rehearsal automatically.');
+  report('XR rehearsal armed. Enter VR once; IWER will execute the part-first controller-path rehearsal automatically.');
   return { enabled: true, stages };
 }
