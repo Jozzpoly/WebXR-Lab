@@ -7,6 +7,7 @@ import {
   extendFromBeamEnd,
   machineFingerprint,
   moveBeamEnd,
+  rehostPoweredWheel,
   removeBeam,
   removeComponent,
 } from './core/machine-document.js';
@@ -77,8 +78,8 @@ app.innerHTML = `
           <span>wheels <b id="wheelCount">–</b></span>
           <span>islands <b id="islandCount">–</b></span>
         </div>
-        <p class="hint"><b>Desktop:</b> drag empty workspace → create beam · click authored object → edit it · WHEEL: hover a beam, then click the wheel ghost to mount · Delete removes selection · RMB orbit · Space RUN/STOP.</p>
-        <p class="hint"><b>XR/IWER:</b> trigger selects the nearest authored object/spatial control; grip creates/manipulates parts, mounts wheels, or moves the BUILD workspace.</p>
+        <p class="hint"><b>Desktop:</b> drag empty workspace → create beam · click authored object → edit it · drag an existing wheel onto another beam face → rehost same part · WHEEL ghost click mounts new wheel · Delete removes selection · RMB orbit · Space RUN/STOP.</p>
+        <p class="hint"><b>XR/IWER:</b> trigger selects nearest authored object; grip + material hand movement rehosts a wheel, while a squeeze without movement remains selection.</p>
       </details>
       <div id="xrMount" class="xr-mount"></div>
     </aside>
@@ -194,7 +195,7 @@ function updateUi(message = null) {
 
   detailLine.textContent = message ?? (mode === 'build'
     ? selected
-      ? 'Edit the wheel mount in place. Mirror it across the host, reverse the motor, delete, or finish.'
+      ? 'Drag this wheel onto another beam face to rehost the same authored part. MIRROR changes mount orientation and coherent drive sign; REVERSE changes motor control only.'
       : selectedBeamId && tool === 'beam'
         ? 'White handle reshapes this beam end. Green handle pulls a new beam from this part. Delete removes the selected part.'
         : tool === 'beam'
@@ -216,12 +217,8 @@ function updateUi(message = null) {
 
 function renderAuthored() {
   activePlan = compileMachine(documentState);
-  if (selectedComponentId && !documentState.components.some((component) => component.id === selectedComponentId)) {
-    selectedComponentId = null;
-  }
-  if (selectedBeamId && !documentState.beams.some((beam) => beam.id === selectedBeamId)) {
-    selectedBeamId = null;
-  }
+  if (selectedComponentId && !documentState.components.some((component) => component.id === selectedComponentId)) selectedComponentId = null;
+  if (selectedBeamId && !documentState.beams.some((beam) => beam.id === selectedBeamId)) selectedBeamId = null;
   view.renderAuthored(documentState, activePlan);
   componentLayer.sync(activePlan);
   componentLayer.setSelected(selectedComponentId);
@@ -245,10 +242,7 @@ function commitDocument(next, message, {
 
 function commitCreateBeam(startPosition, endPosition, startTargetBeamEnd = null, endTargetBeamEnd = null) {
   const beforeIds = new Set(documentState.beams.map((beam) => beam.id));
-  const next = createBeam(documentState, startPosition, endPosition, {
-    startTargetBeamEnd,
-    endTargetBeamEnd,
-  });
+  const next = createBeam(documentState, startPosition, endPosition, { startTargetBeamEnd, endTargetBeamEnd });
   if (next === documentState) {
     updateUi('Beam creation produced no valid structural part.');
     return;
@@ -257,9 +251,7 @@ function commitCreateBeam(startPosition, endPosition, startTargetBeamEnd = null,
   selectedBeamId = created?.id ?? null;
   commitDocument(next, created
     ? `Created ${created.id}${startTargetBeamEnd || endTargetBeamEnd ? ' with welded endpoint topology' : ' from blank workspace'}.`
-    : 'Created structural part.', {
-    preserveBeamSelection: Boolean(created),
-  });
+    : 'Created structural part.', { preserveBeamSelection: Boolean(created) });
 }
 
 function commitMoveBeamEnd(beamId, end, position) {
@@ -283,9 +275,7 @@ function commitExtendBeamEnd(beamId, end, position, targetBeamEnd = null) {
   selectedBeamId = beamId;
   commitDocument(next, targetBeamEnd
     ? `Extended ${beamId} and welded the new member to another real beam end.`
-    : `Pulled a new structural beam from ${beamId}.`, {
-    preserveBeamSelection: true,
-  });
+    : `Pulled a new structural beam from ${beamId}.`, { preserveBeamSelection: true });
 }
 
 function deleteSelectedBeam() {
@@ -303,8 +293,9 @@ function editSelectedBeam(action) {
   if (action === 'beam-delete') deleteSelectedBeam();
 }
 
-function candidateIsDuplicate(candidate) {
-  return Boolean(candidate && documentState.components.some((component) => poweredWheelPlacementMatches(component, candidate)));
+function candidateIsDuplicate(candidate, excludedComponentId = null) {
+  return Boolean(candidate && documentState.components.some((component) =>
+    component.id !== excludedComponentId && poweredWheelPlacementMatches(component, candidate)));
 }
 
 function previewPoweredWheel(candidate) {
@@ -313,7 +304,7 @@ function previewPoweredWheel(candidate) {
     return;
   }
 
-  const key = `${documentState.revision}:${candidate.hostBeamId}:${candidate.mount.position.join(',')}:${candidate.mount.axis.join(',')}:${candidate.motorVelocity}`;
+  const key = `new:${documentState.revision}:${candidate.hostBeamId}:${candidate.mount.position.join(',')}:${candidate.mount.axis.join(',')}:${candidate.motorVelocity}`;
   if (wheelPreviewKey === key) return;
   wheelPreviewKey = key;
 
@@ -331,6 +322,30 @@ function previewPoweredWheel(candidate) {
   componentLayer.showPreview(preview);
 }
 
+function previewPoweredWheelRehost(componentId, candidate) {
+  if (mode !== 'build' || !candidate) {
+    clearPoweredWheelPreview();
+    return;
+  }
+  const current = documentState.components.find((component) => component.id === componentId && component.kind === 'powered-wheel');
+  if (!current || candidateIsDuplicate(candidate, componentId)) {
+    componentLayer.hidePreview();
+    return;
+  }
+
+  const key = `move:${documentState.revision}:${componentId}:${candidate.hostBeamId}:${candidate.mount.position.join(',')}:${candidate.mount.axis.join(',')}`;
+  if (wheelPreviewKey === key) return;
+  wheelPreviewKey = key;
+
+  const hypothetical = rehostPoweredWheel(documentState, componentId, candidate.hostBeamId, candidate.mount);
+  if (hypothetical === documentState) {
+    componentLayer.hidePreview();
+    return;
+  }
+  const preview = compileMachine(hypothetical).components.find((component) => component.id === componentId) ?? null;
+  componentLayer.showPreview(preview);
+}
+
 function commitPoweredWheel(candidate) {
   if (mode !== 'build' || !candidate) return;
   if (candidateIsDuplicate(candidate)) {
@@ -343,6 +358,28 @@ function commitPoweredWheel(candidate) {
     motorVelocity: candidate.motorVelocity,
   });
   commitDocument(next, `Powered wheel mounted on ${candidate.hostBeamId} · axle ${candidate.mount.axis.join(',')} · motor ${candidate.motorVelocity}.`);
+}
+
+function commitPoweredWheelRehost(componentId, candidate) {
+  if (mode !== 'build' || !candidate) return;
+  const current = documentState.components.find((component) => component.id === componentId && component.kind === 'powered-wheel');
+  if (!current) return;
+  if (candidateIsDuplicate(candidate, componentId)) {
+    updateUi('That target mount is already occupied by another powered wheel.');
+    return;
+  }
+
+  const previousHost = current.hostBeamId;
+  const next = rehostPoweredWheel(documentState, componentId, candidate.hostBeamId, candidate.mount);
+  if (next === documentState) {
+    updateUi(`${componentId} already occupies that mount.`);
+    return;
+  }
+  selectedComponentId = componentId;
+  tool = 'powered-wheel';
+  commitDocument(next, `${componentId}: moved from ${previousHost} to ${candidate.hostBeamId} while preserving component identity and motor control.`, {
+    preserveComponentSelection: true,
+  });
 }
 
 function selectBeam(beamId) {
@@ -391,10 +428,7 @@ function mirroredWheelPatch(current) {
   const normalDistance = current.mount.position.reduce((sum, value, index) => sum + value * axis[index], 0);
   const position = current.mount.position.map((value, index) => value - 2 * normalDistance * axis[index]);
   return {
-    mount: {
-      position,
-      axis: axis.map((value) => -value),
-    },
+    mount: { position, axis: axis.map((value) => -value) },
     motorVelocity: -current.motorVelocity,
   };
 }
@@ -407,14 +441,12 @@ function editSelectedWheel(action) {
     clearComponentSelection();
     return;
   }
-
   if (action === 'wheel-delete') {
     const id = current.id;
     selectedComponentId = null;
     commitDocument(removeComponent(documentState, id), `Deleted ${id}; structural topology remains unchanged.`);
     return;
   }
-
   if (action === 'wheel-flip') {
     const next = editPoweredWheel(documentState, current.id, mirroredWheelPatch(current));
     commitDocument(next, `${current.id}: mirrored across host beam while preserving coherent drive intent.`, {
@@ -422,7 +454,6 @@ function editSelectedWheel(action) {
     });
     return;
   }
-
   if (action === 'wheel-reverse') {
     const nextVelocity = current.motorVelocity === 0 ? 8 : -current.motorVelocity;
     const next = editPoweredWheel(documentState, current.id, { motorVelocity: nextVelocity });
@@ -579,6 +610,8 @@ attachDesktopComponents({
   getTool: () => tool,
   commitPoweredWheel,
   previewPoweredWheel,
+  previewPoweredWheelRehost,
+  commitPoweredWheelRehost,
   clearPoweredWheelPreview,
   selectComponent,
 });
@@ -600,6 +633,8 @@ const xrConstruction = setupXrConstruction({
   commitExtendBeamEnd,
   commitPoweredWheel,
   previewPoweredWheel,
+  previewPoweredWheelRehost,
+  commitPoweredWheelRehost,
   clearPoweredWheelPreview,
   selectBeam,
   clearBeamSelection,

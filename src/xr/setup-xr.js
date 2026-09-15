@@ -14,6 +14,7 @@ const rayGeometry = new THREE.BufferGeometry().setFromPoints([
 const rayMaterial = new THREE.LineBasicMaterial({ color: 0x81e6ff, transparent: true, opacity: 0.85 });
 const gripGeometry = new THREE.BoxGeometry(0.045, 0.09, 0.13);
 const gripMaterial = new THREE.MeshStandardMaterial({ color: 0x243849, roughness: 0.48, metalness: 0.32 });
+const COMPONENT_DRAG_THRESHOLD = 0.07;
 
 export function setupXrConstruction({
   view,
@@ -29,6 +30,8 @@ export function setupXrConstruction({
   commitExtendBeamEnd,
   commitPoweredWheel,
   previewPoweredWheel,
+  previewPoweredWheelRehost,
+  commitPoweredWheelRehost,
   clearPoweredWheelPreview,
   selectBeam,
   clearBeamSelection,
@@ -67,6 +70,11 @@ export function setupXrConstruction({
     view.hideGhost();
   };
 
+  const clearComponentDrag = (state) => {
+    state.componentDrag = null;
+    clearPoweredWheelPreview();
+  };
+
   view.renderer.xr.addEventListener('sessionstart', () => {
     desktopPosition.copy(view.camera.position);
     desktopQuaternion.copy(view.camera.quaternion);
@@ -82,7 +90,10 @@ export function setupXrConstruction({
   view.renderer.xr.addEventListener('sessionend', () => {
     releaseWorkspace();
     clearPoweredWheelPreview();
-    for (const hand of hands) clearStructuralDrag(hand.state);
+    for (const hand of hands) {
+      clearStructuralDrag(hand.state);
+      clearComponentDrag(hand.state);
+    }
     view.spatialPanel.group.visible = false;
     workspaceHandle.group.visible = false;
     workspaceDelta.copy(view.workspaceRoot.position).sub(workspaceAtSessionStart);
@@ -144,6 +155,22 @@ export function setupXrConstruction({
     view.showGhost(previewStart, end, length >= MIN_BEAM_LENGTH);
   };
 
+  const updateComponentDrag = (hand) => {
+    const drag = hand.state.componentDrag;
+    if (!drag) return false;
+
+    hand.grip.updateWorldMatrix(true, false);
+    hand.grip.getWorldPosition(hand.worldPoint);
+    const movement = hand.worldPoint.distanceTo(drag.startWorld);
+    if (!drag.active && movement < COMPONENT_DRAG_THRESHOLD) return false;
+
+    drag.active = true;
+    view.worldToWorkspacePoint(hand.worldPoint, hand.localPoint);
+    drag.candidate = proposePoweredWheelPlacementNearPoint(getDocument(), hand.localPoint.toArray(), { maxDistance: 0.28 });
+    previewPoweredWheelRehost(drag.componentId, drag.candidate);
+    return true;
+  };
+
   for (let index = 0; index < 2; index += 1) {
     const controller = view.renderer.xr.getController(index);
     const grip = view.renderer.xr.getControllerGrip(index);
@@ -155,7 +182,7 @@ export function setupXrConstruction({
     grip.visible = false;
     view.scene.add(controller, grip);
 
-    const state = { structuralDrag: null, lastPoint: null, targetBeamEnd: null };
+    const state = { structuralDrag: null, componentDrag: null, lastPoint: null, targetBeamEnd: null };
     const worldPoint = new THREE.Vector3();
     const localPoint = new THREE.Vector3();
 
@@ -167,6 +194,7 @@ export function setupXrConstruction({
       controller.visible = false;
       grip.visible = false;
       clearStructuralDrag(state);
+      clearComponentDrag(state);
       if (workspaceGrabHand === index) releaseWorkspace();
       clearPoweredWheelPreview();
     });
@@ -188,12 +216,9 @@ export function setupXrConstruction({
       if (!authoredHit) return;
 
       if (authoredHit.kind === 'component') {
-        selectTool('powered-wheel');
         selectComponent(authoredHit.componentId);
         return;
       }
-
-      selectTool('beam');
       selectBeam(authoredHit.beamId);
     });
 
@@ -206,6 +231,7 @@ export function setupXrConstruction({
         workspaceDrag = beginWorkspaceTranslation(view.workspaceRoot.position.toArray(), worldPoint.toArray());
         workspaceHandle.setActive(true);
         clearStructuralDrag(state);
+        clearComponentDrag(state);
         clearPoweredWheelPreview();
         return;
       }
@@ -217,8 +243,13 @@ export function setupXrConstruction({
       if (componentId) {
         clearStructuralDrag(state);
         clearPoweredWheelPreview();
-        selectTool('powered-wheel');
         selectComponent(componentId);
+        state.componentDrag = {
+          componentId,
+          startWorld: worldPoint.clone(),
+          active: false,
+          candidate: null,
+        };
         return;
       }
       if (getSelectedComponentId()) return;
@@ -259,7 +290,6 @@ export function setupXrConstruction({
 
       const nearSurface = nearestBeamSurface(getDocument(), localPoint.toArray(), 0.18);
       if (nearSurface?.beamId) {
-        selectTool('beam');
         selectBeam(nearSurface.beamId);
         return;
       }
@@ -280,8 +310,17 @@ export function setupXrConstruction({
         releaseWorkspace();
         return;
       }
-      if (workspaceGrabHand !== null || !state.structuralDrag || !isBuildMode()) return;
+      if (workspaceGrabHand !== null || !isBuildMode()) return;
 
+      if (state.componentDrag) {
+        updateComponentDrag({ grip, state, worldPoint, localPoint });
+        const drag = state.componentDrag;
+        if (drag.active && drag.candidate) commitPoweredWheelRehost(drag.componentId, drag.candidate);
+        clearComponentDrag(state);
+        return;
+      }
+
+      if (!state.structuralDrag) return;
       updateStructuralDrag({ grip, state, worldPoint, localPoint });
       const drag = state.structuralDrag;
       const point = state.lastPoint;
@@ -316,9 +355,16 @@ export function setupXrConstruction({
     },
     update() {
       workspaceHandle.group.visible = view.renderer.xr.isPresenting && isBuildMode();
-      if (!isBuildMode() && workspaceGrabHand !== null) releaseWorkspace();
+      if (!isBuildMode()) {
+        if (workspaceGrabHand !== null) releaseWorkspace();
+        for (const hand of hands) clearComponentDrag(hand.state);
+      }
 
-      if (workspaceGrabHand !== null && workspaceDrag) {
+      const componentDragHands = isBuildMode() ? hands.filter((hand) => hand.state.componentDrag) : [];
+      if (componentDragHands.length > 0) {
+        clearPoweredWheelPreview();
+        for (const hand of componentDragHands) updateComponentDrag(hand);
+      } else if (workspaceGrabHand !== null && workspaceDrag) {
         clearPoweredWheelPreview();
         const hand = hands[workspaceGrabHand];
         hand.grip.updateWorldMatrix(true, false);

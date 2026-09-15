@@ -1,5 +1,7 @@
 import { proposePoweredWheelPlacement } from './wheel-placement.js';
 
+const DRAG_THRESHOLD_PX = 6;
+
 export function attachDesktopComponents({
   view,
   componentLayer,
@@ -8,11 +10,14 @@ export function attachDesktopComponents({
   getTool,
   commitPoweredWheel,
   previewPoweredWheel,
+  previewPoweredWheelRehost,
+  commitPoweredWheelRehost,
   clearPoweredWheelPreview,
   selectComponent,
 }) {
   const canvas = view.renderer.domElement;
   let previewCandidate = null;
+  let componentDrag = null;
 
   const candidateAtPointer = (event) => {
     const hit = view.pickBeamSurface(event.clientX, event.clientY);
@@ -30,7 +35,27 @@ export function attachDesktopComponents({
     clearPoweredWheelPreview();
   };
 
+  const clearComponentDrag = () => {
+    const pointerId = componentDrag?.pointerId ?? null;
+    componentDrag = null;
+    clearPoweredWheelPreview();
+    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+  };
+
+  const updateComponentDrag = (event) => {
+    if (!componentDrag || componentDrag.pointerId !== event.pointerId) return false;
+    const movement = Math.hypot(event.clientX - componentDrag.startX, event.clientY - componentDrag.startY);
+    if (!componentDrag.active && movement < DRAG_THRESHOLD_PX) return true;
+
+    componentDrag.active = true;
+    componentDrag.candidate = candidateAtPointer(event);
+    previewPoweredWheelRehost(componentDrag.componentId, componentDrag.candidate);
+    return true;
+  };
+
   const onPointerMove = (event) => {
+    if (updateComponentDrag(event)) return;
+
     if (!isBuildMode() || getTool() !== 'powered-wheel') {
       clearPreview();
       return;
@@ -41,9 +66,7 @@ export function attachDesktopComponents({
       return;
     }
 
-    if (previewCandidate && componentLayer.pickPreviewPointer(event.clientX, event.clientY)) {
-      return;
-    }
+    if (previewCandidate && componentLayer.pickPreviewPointer(event.clientX, event.clientY)) return;
 
     previewCandidate = candidateAtPointer(event);
     previewPoweredWheel(previewCandidate);
@@ -56,7 +79,17 @@ export function attachDesktopComponents({
     if (componentId) {
       clearPreview();
       selectComponent(componentId);
+      componentDrag = {
+        componentId,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        active: false,
+        candidate: null,
+      };
+      canvas.setPointerCapture(event.pointerId);
       event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
 
@@ -67,12 +100,28 @@ export function attachDesktopComponents({
     clearPreview();
     commitPoweredWheel(candidate);
     event.preventDefault();
+    event.stopImmediatePropagation();
   };
 
-  const onPointerLeave = () => clearPreview();
+  const finishComponentDrag = (event, cancelled = false) => {
+    if (!componentDrag || componentDrag.pointerId !== event.pointerId) return;
+    updateComponentDrag(event);
+    const drag = componentDrag;
+    if (!cancelled && drag.active && drag.candidate) {
+      commitPoweredWheelRehost(drag.componentId, drag.candidate);
+    }
+    clearComponentDrag();
+    event.preventDefault();
+  };
+
+  const onPointerLeave = () => {
+    if (!componentDrag) clearPreview();
+  };
 
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointerup', (event) => finishComponentDrag(event, false));
+  canvas.addEventListener('pointercancel', (event) => finishComponentDrag(event, true));
   canvas.addEventListener('pointerleave', onPointerLeave);
   return () => {
     canvas.removeEventListener('pointermove', onPointerMove);

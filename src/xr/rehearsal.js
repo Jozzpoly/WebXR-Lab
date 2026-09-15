@@ -94,9 +94,7 @@ export function installIwerRehearsal({
   report,
 }) {
   const params = new URLSearchParams(window.location.search);
-  if (params.get('rehearse') !== '1' || emulation.mode !== 'iwer' || !emulation.device) {
-    return { enabled: false };
-  }
+  if (params.get('rehearse') !== '1' || emulation.mode !== 'iwer' || !emulation.device) return { enabled: false };
 
   const device = emulation.device;
   const controller = device.controllers?.right;
@@ -110,11 +108,7 @@ export function installIwerRehearsal({
   let phase = 'armed';
   const publishTrace = (nextPhase) => {
     phase = nextPhase;
-    window.__riftworksXrRehearsalTrace = {
-      phase,
-      mode: getMode(),
-      stages: stages.map((stage) => stage.name),
-    };
+    window.__riftworksXrRehearsalTrace = { phase, mode: getMode(), stages: stages.map((stage) => stage.name) };
   };
   const mark = (name) => {
     stages.push({ name, pass: true });
@@ -194,10 +188,8 @@ export function installIwerRehearsal({
       const movedTargetLocal = [extensionB[0] + 0.18, extensionB[1], extensionB[2] - 0.12];
       await dragGrip(view, device, controller, moveFrom, toWorld(movedTargetLocal), 'beam-reshape');
       const movedEnd = beamEndPosition(getDocument(), extension.id, 'b');
-      requireState(
-        Math.hypot(movedEnd[0] - extensionB[0], movedEnd[1] - extensionB[1], movedEnd[2] - extensionB[2]) > 0.1,
-        'MOVE handle did not materially reshape the structural part',
-      );
+      requireState(Math.hypot(movedEnd[0] - extensionB[0], movedEnd[1] - extensionB[1], movedEnd[2] - extensionB[2]) > 0.1,
+        'MOVE handle did not materially reshape the structural part');
       mark('beam-reshape');
 
       await setPose(view, device, controller, rayOrigin, actionTarget('beam-done'), 'beam-done-aim');
@@ -235,22 +227,36 @@ export function installIwerRehearsal({
       requireState(getSelectedComponentId() === wheelId, 'direct squeeze did not select existing wheel');
       mark('direct-component-select');
 
-      const beforeReverse = structuredClone(getDocument().components.find((component) => component.id === wheelId));
-      requireState(beforeReverse, 'selected wheel disappeared before edit');
+      const beforeRehost = structuredClone(getDocument().components.find((component) => component.id === wheelId));
+      const rehostA = beamEndPosition(getDocument(), extension.id, 'a');
+      const rehostB = beamEndPosition(getDocument(), extension.id, 'b');
+      const rehostTarget = toWorld([
+        (rehostA[0] + rehostB[0]) * 0.5,
+        (rehostA[1] + rehostB[1]) * 0.5 + 0.13,
+        (rehostA[2] + rehostB[2]) * 0.5,
+      ]);
+      await dragGrip(view, device, controller, wheelWorld, rehostTarget, 'wheel-direct-rehost');
+      const afterRehost = getDocument().components.find((component) => component.id === wheelId);
+      requireState(afterRehost?.id === wheelId, 'direct wheel drag replaced authored identity');
+      requireState(afterRehost.hostBeamId === extension.id, 'direct wheel drag did not rehost onto the target beam');
+      requireState(afterRehost.motorVelocity === beforeRehost.motorVelocity, 'direct spatial move silently rewired motor control');
+      requireState(getSelectedComponentId() === wheelId, 'direct wheel rehost lost component selection');
+      mark('direct-component-rehost');
+
+      const beforeReverse = structuredClone(afterRehost);
       await setPose(view, device, controller, rayOrigin, actionTarget('wheel-reverse'), 'wheel-reverse-aim');
       await pulse(view, device, controller, TRIGGER, 'wheel-reverse');
       const afterReverse = getDocument().components.find((component) => component.id === wheelId);
-      requireState(afterReverse?.id === wheelId && afterReverse.motorVelocity === -beforeReverse.motorVelocity, 'REVERSE did not preserve identity and invert motor velocity');
+      requireState(afterReverse?.id === wheelId && afterReverse.motorVelocity === -beforeReverse.motorVelocity,
+        'REVERSE did not preserve identity and invert motor velocity');
 
       const beforeMirror = structuredClone(afterReverse);
       await setPose(view, device, controller, rayOrigin, actionTarget('wheel-flip'), 'wheel-mirror-aim');
       await pulse(view, device, controller, TRIGGER, 'wheel-mirror');
       const afterMirror = getDocument().components.find((component) => component.id === wheelId);
       const axisDot = beforeMirror.mount.axis.reduce((sum, value, index) => sum + value * afterMirror.mount.axis[index], 0);
-      requireState(
-        afterMirror?.id === wheelId && axisDot < -0.99 && afterMirror.motorVelocity === -beforeMirror.motorVelocity,
-        'MIRROR did not preserve identity while mirroring axle and coherent motor intent',
-      );
+      requireState(afterMirror?.id === wheelId && axisDot < -0.99 && afterMirror.motorVelocity === -beforeMirror.motorVelocity,
+        'MIRROR did not preserve identity while mirroring axle and coherent motor intent');
       mark('contextual-wheel-edit');
 
       await setPose(view, device, controller, rayOrigin, actionTarget('wheel-done'), 'wheel-done-aim');
@@ -274,9 +280,7 @@ export function installIwerRehearsal({
       mark('workspace-grab');
 
       const authoredBeforeRun = machineFingerprint(getDocument());
-      publishTrace('enter-run:aim');
       await setPose(view, device, controller, rayOrigin, actionTarget('run-toggle'), 'enter-run-aim');
-      publishTrace('enter-run:pulse');
       await pulse(view, device, controller, TRIGGER, 'enter-run');
       requireState(getMode() === 'run', 'trigger ray did not enter RUN');
       await xrFrames(view, 8, 'run-observe');
@@ -294,15 +298,15 @@ export function installIwerRehearsal({
       requireState(machineFingerprint(getDocument()) === authoredBeforeRun, 'STOP did not preserve edited authored truth');
       mark('run-stop-authority');
 
-      await selectBeamByVisiblePoint(seed.id, 0.45, [0.75, 0.72, 0.45], 'delete-host-beam');
+      await selectBeamByVisiblePoint(extension.id, 0.55, [0.75, 0.70, -0.20], 'delete-wheel-host-beam');
       await setPose(view, device, controller, rayOrigin, actionTarget('beam-delete'), 'delete-host-aim');
       await pulse(view, device, controller, TRIGGER, 'delete-host');
       requireState(getDocument().beams.length === 1, 'beam DELETE did not remove the selected structural part');
-      requireState(getDocument().components.length === 0, 'deleting a host beam left a dangling powered wheel');
+      requireState(getDocument().components.length === 0, 'deleting the current wheel host left a dangling powered wheel');
       mark('beam-delete-cascade');
 
       const remaining = getDocument().beams[0];
-      await selectBeamByVisiblePoint(remaining.id, 0.55, [0.75, 0.70, -0.20], 'delete-final-beam');
+      await selectBeamByVisiblePoint(remaining.id, 0.55, [0.75, 0.72, 0.45], 'delete-final-beam');
       await setPose(view, device, controller, rayOrigin, actionTarget('beam-delete'), 'delete-final-aim');
       await pulse(view, device, controller, TRIGGER, 'delete-final');
       requireState(getDocument().beams.length === 0, 'deleting final beam did not return to blank structure');
@@ -310,7 +314,8 @@ export function installIwerRehearsal({
       requireState(getDocument().components.length === 0, 'blank return left components');
       mark('blank-return');
 
-      requireState(machineFingerprint(getDocument()) !== authoredAtStart, 'lifecycle should advance authored revision/id provenance even after returning to blank geometry');
+      requireState(machineFingerprint(getDocument()) !== authoredAtStart,
+        'lifecycle should advance authored revision/id provenance even after returning to blank geometry');
       publishTrace('pass');
       report(`XR rehearsal PASS · ${stages.length}/${stages.length}: ${stages.map((stage) => stage.name).join(' → ')}`);
       window.__riftworksXrRehearsal = { pass: true, stages: [...stages], phase };
@@ -331,9 +336,7 @@ export function installIwerRehearsal({
     }
   };
 
-  view.renderer.xr.addEventListener('sessionstart', () => {
-    run();
-  });
+  view.renderer.xr.addEventListener('sessionstart', () => { run(); });
   publishTrace('armed');
   report('XR rehearsal armed. Enter VR once; IWER will execute the blank-workshop part lifecycle automatically.');
   return { enabled: true, stages };
