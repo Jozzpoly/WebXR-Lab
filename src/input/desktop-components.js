@@ -25,6 +25,8 @@ export function attachDesktopComponents({
     lastCandidate: null,
   };
 
+  const isDesktopActive = () => !view.renderer.xr.isPresenting;
+
   if (typeof window !== 'undefined' && import.meta.env?.DEV) {
     window.__riftworksDesktopInputEvidence = Object.freeze({
       snapshot: () => ({
@@ -68,6 +70,14 @@ export function attachDesktopComponents({
     if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
   };
 
+  const cancelDesktopTransient = () => {
+    previewCandidate = null;
+    const pointerId = componentDrag?.pointerId ?? null;
+    componentDrag = null;
+    clearPoweredWheelPreview();
+    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+  };
+
   const updateComponentDrag = (event) => {
     if (!componentDrag || componentDrag.pointerId !== event.pointerId) return false;
     const movement = Math.hypot(event.clientX - componentDrag.startX, event.clientY - componentDrag.startY);
@@ -83,6 +93,11 @@ export function attachDesktopComponents({
     devTrace.pointerMoves += 1;
     devTrace.lastPointer = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, buttons: event.buttons };
     devTrace.lastCandidate = null;
+
+    if (!isDesktopActive()) {
+      devTrace.lastBranch = 'xr-owned';
+      return;
+    }
 
     if (updateComponentDrag(event)) {
       devTrace.lastBranch = 'component-drag';
@@ -114,7 +129,7 @@ export function attachDesktopComponents({
   };
 
   const onPointerDown = (event) => {
-    if (event.button !== 0 || !isBuildMode()) return;
+    if (!isDesktopActive() || event.button !== 0 || !isBuildMode()) return;
 
     const componentId = componentLayer.pickPointer(event.clientX, event.clientY);
     if (componentId) {
@@ -145,7 +160,7 @@ export function attachDesktopComponents({
   };
 
   const finishComponentDrag = (event, cancelled = false) => {
-    if (!componentDrag || componentDrag.pointerId !== event.pointerId) return;
+    if (!isDesktopActive() || !componentDrag || componentDrag.pointerId !== event.pointerId) return;
     updateComponentDrag(event);
     const drag = componentDrag;
     if (!cancelled && drag.active && drag.candidate) {
@@ -155,18 +170,28 @@ export function attachDesktopComponents({
     event.preventDefault();
   };
 
+  const onPointerUp = (event) => finishComponentDrag(event, false);
+  const onPointerCancel = (event) => finishComponentDrag(event, true);
   const onPointerLeave = () => {
+    if (!isDesktopActive()) return;
     if (!componentDrag) clearPreview();
   };
+  const onXrSessionStart = () => cancelDesktopTransient();
 
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerdown', onPointerDown);
-  canvas.addEventListener('pointerup', (event) => finishComponentDrag(event, false));
-  canvas.addEventListener('pointercancel', (event) => finishComponentDrag(event, true));
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerCancel);
   canvas.addEventListener('pointerleave', onPointerLeave);
+  view.renderer.xr.addEventListener('sessionstart', onXrSessionStart);
+
   return () => {
+    cancelDesktopTransient();
     canvas.removeEventListener('pointermove', onPointerMove);
     canvas.removeEventListener('pointerdown', onPointerDown);
+    canvas.removeEventListener('pointerup', onPointerUp);
+    canvas.removeEventListener('pointercancel', onPointerCancel);
     canvas.removeEventListener('pointerleave', onPointerLeave);
+    view.renderer.xr.removeEventListener('sessionstart', onXrSessionStart);
   };
 }
