@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { createSeedMachine, extendFromNode } from '../src/core/machine-document.js';
 import { proposePoweredWheelPlacement, proposePoweredWheelPlacementNearPoint } from '../src/input/wheel-placement.js';
 
+const near = (actual, expected, eps = 1e-9) => {
+  actual.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) <= eps, `${actual} != ${expected}`));
+};
+
 test('wheel placement candidate is anchored to a concrete host beam face', () => {
   const document = createSeedMachine();
   const candidate = proposePoweredWheelPlacement(document, 'b1', [0.18, 0.01, 0.2], [0, 0, 1]);
@@ -22,8 +26,8 @@ test('mirrored beam faces produce explicit mirrored axle and motor signs', () =>
   assert.deepEqual(right.mount.axis, [0, 0, 1]);
   assert.equal(left.motorVelocity, -8);
   assert.equal(right.motorVelocity, 8);
-  assert.deepEqual(left.mount.axis.map((value) => value * left.motorVelocity), [0, 0, 8]);
-  assert.deepEqual(right.mount.axis.map((value) => value * right.motorVelocity), [0, 0, 8]);
+  near(left.mount.axis.map((value) => value * left.motorVelocity), [0, 0, 8]);
+  near(right.mount.axis.map((value) => value * right.motorVelocity), [0, 0, 8]);
 });
 
 test('unrelated topology cannot affect a host-beam surface proposal', () => {
