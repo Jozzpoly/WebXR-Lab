@@ -17,6 +17,7 @@ export function attachDesktopComponents({
 }) {
   const canvas = view.renderer.domElement;
   let previewCandidate = null;
+  let pendingPlacement = null;
   let componentDrag = null;
   const devTrace = {
     pointerMoves: 0,
@@ -72,10 +73,20 @@ export function attachDesktopComponents({
 
   const cancelDesktopTransient = () => {
     previewCandidate = null;
+    pendingPlacement = null;
     const pointerId = componentDrag?.pointerId ?? null;
     componentDrag = null;
     clearPoweredWheelPreview();
     if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+  };
+
+  const updatePendingPlacement = (event) => {
+    if (!pendingPlacement || pendingPlacement.pointerId !== event.pointerId) return false;
+    const movement = Math.hypot(event.clientX - pendingPlacement.startX, event.clientY - pendingPlacement.startY);
+    if (movement < DRAG_THRESHOLD_PX) return true;
+    pendingPlacement = null;
+    clearPreview();
+    return true;
   };
 
   const updateComponentDrag = (event) => {
@@ -96,6 +107,11 @@ export function attachDesktopComponents({
 
     if (!isDesktopActive()) {
       devTrace.lastBranch = 'xr-owned';
+      return;
+    }
+
+    if (updatePendingPlacement(event)) {
+      devTrace.lastBranch = pendingPlacement ? 'pending-wheel-click' : 'wheel-click-cancelled-by-drag';
       return;
     }
 
@@ -152,15 +168,33 @@ export function attachDesktopComponents({
     if (getTool() !== 'powered-wheel') return;
     if (!previewCandidate || !componentLayer.pickPreviewPointer(event.clientX, event.clientY)) return;
 
-    const candidate = previewCandidate;
-    clearPreview();
-    commitPoweredWheel(candidate);
+    pendingPlacement = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      candidate: previewCandidate,
+    };
     event.preventDefault();
     event.stopImmediatePropagation();
   };
 
+  const finishPendingPlacement = (event, cancelled = false) => {
+    if (!pendingPlacement || pendingPlacement.pointerId !== event.pointerId) return false;
+    const pending = pendingPlacement;
+    const movement = Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY);
+    pendingPlacement = null;
+    const shouldCommit = !cancelled
+      && movement < DRAG_THRESHOLD_PX
+      && isBuildMode()
+      && getTool() === 'powered-wheel';
+    clearPreview();
+    if (shouldCommit) commitPoweredWheel(pending.candidate);
+    event.preventDefault();
+    return true;
+  };
+
   const finishComponentDrag = (event, cancelled = false) => {
-    if (!isDesktopActive() || !componentDrag || componentDrag.pointerId !== event.pointerId) return;
+    if (!isDesktopActive() || !componentDrag || componentDrag.pointerId !== event.pointerId) return false;
     updateComponentDrag(event);
     const drag = componentDrag;
     if (!cancelled && drag.active && drag.candidate) {
@@ -168,13 +202,22 @@ export function attachDesktopComponents({
     }
     clearComponentDrag();
     event.preventDefault();
+    return true;
   };
 
-  const onPointerUp = (event) => finishComponentDrag(event, false);
-  const onPointerCancel = (event) => finishComponentDrag(event, true);
+  const onPointerUp = (event) => {
+    if (!isDesktopActive()) return;
+    if (finishPendingPlacement(event, false)) return;
+    finishComponentDrag(event, false);
+  };
+  const onPointerCancel = (event) => {
+    if (!isDesktopActive()) return;
+    if (finishPendingPlacement(event, true)) return;
+    finishComponentDrag(event, true);
+  };
   const onPointerLeave = () => {
     if (!isDesktopActive()) return;
-    if (!componentDrag) clearPreview();
+    if (!componentDrag && !pendingPlacement) clearPreview();
   };
   const onXrSessionStart = () => cancelDesktopTransient();
 
