@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { proposePoweredWheelPlacementNearPoint } from '../input/wheel-placement.js';
 import { beginWorkspaceTranslation, updateWorkspaceTranslation } from '../input/workspace-translation.js';
 import { WorkspaceGrabHandle } from '../view/workspace-handle.js';
 
@@ -142,17 +143,18 @@ export function setupXrConstruction({
       }
       if (getSelectedComponentId()) return;
 
-      const nodeId = view.nearestNode(getDocument(), localPoint, 0.18);
-      if (!nodeId) return;
-
       if (getTool() === 'powered-wheel') {
+        const candidate = proposePoweredWheelPlacementNearPoint(getDocument(), localPoint.toArray(), { maxDistance: 0.22 });
+        if (!candidate) return;
         clearPoweredWheelPreview();
-        commitPoweredWheel(nodeId);
+        commitPoweredWheel(candidate);
         state.startId = null;
         return;
       }
 
       if (getTool() !== 'beam') return;
+      const nodeId = view.nearestNode(getDocument(), localPoint, 0.18);
+      if (!nodeId) return;
       state.startId = nodeId;
     });
 
@@ -183,6 +185,10 @@ export function setupXrConstruction({
   mountButton.appendChild(button);
 
   return {
+    getWorkspaceHandleWorldPosition(target = new THREE.Vector3()) {
+      workspaceHandle.group.updateWorldMatrix(true, false);
+      return target.setFromMatrixPosition(workspaceHandle.group.matrixWorld);
+    },
     update() {
       if (workspaceGrabHand !== null && workspaceDrag) {
         clearPoweredWheelPreview();
@@ -208,16 +214,18 @@ export function setupXrConstruction({
           if (start) view.showGhost(start, end, true);
         }
       } else if (isBuildMode() && getTool() === 'powered-wheel' && !getSelectedComponentId()) {
-        let previewNodeId = null;
+        let previewCandidate = null;
         for (const hand of hands) {
           if (!hand.grip.visible) continue;
           hand.grip.updateWorldMatrix(true, false);
           hand.grip.getWorldPosition(hand.worldPoint);
           view.worldToWorkspacePoint(hand.worldPoint, hand.localPoint);
           if (componentLayer.nearest(hand.localPoint, 0.24)) continue;
-          previewNodeId = view.nearestNode(getDocument(), hand.localPoint, 0.2) ?? previewNodeId;
+          const candidate = proposePoweredWheelPlacementNearPoint(getDocument(), hand.localPoint.toArray(), { maxDistance: 0.22 });
+          if (!candidate) continue;
+          if (!previewCandidate || candidate.distance < previewCandidate.distance) previewCandidate = candidate;
         }
-        previewPoweredWheel(previewNodeId);
+        previewPoweredWheel(previewCandidate);
       } else {
         clearPoweredWheelPreview();
       }
