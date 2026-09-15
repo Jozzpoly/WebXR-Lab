@@ -27,6 +27,7 @@ export function attachDesktopBuilder({
     targetBeamEnd: null,
   };
 
+  const isDesktopActive = () => !view.renderer.xr.isPresenting;
   const snap = (point) => getGridEnabled() ? snapMachinePoint(point, 0.25) : point.clone();
 
   const clearState = (pointerId = state.pointerId) => {
@@ -42,7 +43,7 @@ export function attachDesktopBuilder({
   };
 
   const updateDrag = (event) => {
-    if (!state.operation || !state.dragAnchor || !isBuildMode() || getTool() !== 'beam') return;
+    if (!isDesktopActive() || !state.operation || !state.dragAnchor || !isBuildMode() || getTool() !== 'beam') return;
     const point = pointOnCameraFacingMachinePlane(
       view,
       event.clientX,
@@ -124,8 +125,8 @@ export function attachDesktopBuilder({
     event.preventDefault();
   };
 
-  canvas.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || !isBuildMode()) return;
+  const onPointerDown = (event) => {
+    if (!isDesktopActive() || event.button !== 0 || !isBuildMode()) return;
 
     const componentLayer = view.componentInteractionLayer;
     if (getTool() === 'powered-wheel' && componentLayer?.pickPreviewPointer(event.clientX, event.clientY)) return;
@@ -156,14 +157,12 @@ export function attachDesktopBuilder({
     if (getTool() !== 'beam') return;
     const point = view.pointOnBuildPlane(event.clientX, event.clientY);
     if (point) beginFreeCreate(point, event);
-  });
+  };
 
-  canvas.addEventListener('pointermove', updateDrag);
+  const finish = (event, cancelled = false) => {
+    if (!isDesktopActive() || state.pointerId !== event.pointerId || !state.operation) return;
 
-  const finish = (event) => {
-    if (state.pointerId !== event.pointerId || !state.operation) return;
-
-    if (state.lastPoint) {
+    if (!cancelled && state.lastPoint) {
       if (state.operation.kind === 'create') {
         commitCreateBeam(
           state.startPoint,
@@ -189,11 +188,25 @@ export function attachDesktopBuilder({
     clearState(event.pointerId);
   };
 
-  canvas.addEventListener('pointerup', finish);
-  canvas.addEventListener('pointercancel', finish);
-  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  const onPointerUp = (event) => finish(event, false);
+  const onPointerCancel = (event) => finish(event, true);
+  const onContextMenu = (event) => event.preventDefault();
+  const onXrSessionStart = () => clearState();
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', updateDrag);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerCancel);
+  canvas.addEventListener('contextmenu', onContextMenu);
+  view.renderer.xr.addEventListener('sessionstart', onXrSessionStart);
 
   return () => {
+    clearState();
+    canvas.removeEventListener('pointerdown', onPointerDown);
     canvas.removeEventListener('pointermove', updateDrag);
+    canvas.removeEventListener('pointerup', onPointerUp);
+    canvas.removeEventListener('pointercancel', onPointerCancel);
+    canvas.removeEventListener('contextmenu', onContextMenu);
+    view.renderer.xr.removeEventListener('sessionstart', onXrSessionStart);
   };
 }
