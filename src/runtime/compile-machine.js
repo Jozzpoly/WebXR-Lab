@@ -1,18 +1,11 @@
 import { assertValidMachine, machineFingerprint } from '../core/machine-document.js';
+import { beamLocalToMachinePoint, beamLocalToMachineVector, getBeamFrame } from '../core/beam-frame.js';
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scale = (v, s) => [v[0] * s, v[1] * s, v[2] * s];
 const length = (v) => Math.hypot(v[0], v[1], v[2]);
 const normalize = (v) => scale(v, 1 / length(v));
-
-function rotationFromPositiveX(direction) {
-  const [x, y, z] = normalize(direction);
-  if (x < -0.999999) return [0, 1, 0, 0];
-  const q = [0, -z, y, 1 + x];
-  const qLen = Math.hypot(...q);
-  return q.map((value) => value / qLen);
-}
 
 function rotationFromPositiveY(direction) {
   const [x, y, z] = normalize(direction);
@@ -56,10 +49,11 @@ function connectedComponents(document) {
 export function compileMachine(document) {
   assertValidMachine(document);
   const nodes = new Map(document.nodes.map((node) => [node.id, node]));
-  const components = connectedComponents(document);
+  const connected = connectedComponents(document);
   const nodeToIsland = new Map();
+  const compiledBeamById = new Map();
 
-  const islands = components.map((nodeIds, index) => {
+  const islands = connected.map((nodeIds, index) => {
     const id = `island-${index + 1}`;
     for (const nodeId of nodeIds) nodeToIsland.set(nodeId, id);
 
@@ -71,19 +65,20 @@ export function compileMachine(document) {
     const beams = document.beams
       .filter((beam) => nodeSet.has(beam.a) && nodeSet.has(beam.b))
       .map((beam) => {
-        const a = nodes.get(beam.a).position;
-        const b = nodes.get(beam.b).position;
-        const delta = sub(b, a);
-        const beamLength = length(delta);
-        const midpoint = scale(add(a, b), 0.5);
-        return {
+        const frame = getBeamFrame(document, beam.id);
+        const compiled = {
           id: beam.id,
-          length: beamLength,
+          length: frame.length,
           thickness: beam.thickness,
           density: beam.density,
-          localPosition: sub(midpoint, origin),
-          localRotation: rotationFromPositiveX(delta),
+          roll: beam.roll,
+          machinePosition: frame.center,
+          machineRotation: frame.rotation,
+          localPosition: sub(frame.center, origin),
+          localRotation: frame.rotation,
         };
+        compiledBeamById.set(beam.id, { ...compiled, hostIslandId: id, islandOrigin: origin, frame });
+        return compiled;
       });
 
     return { id, nodeIds, origin, beams };
@@ -91,26 +86,32 @@ export function compileMachine(document) {
 
   const compiledComponents = document.components.map((component) => {
     if (component.kind !== 'powered-wheel') throw new Error(`unsupported component kind: ${component.kind}`);
-    const hostIslandId = nodeToIsland.get(component.nodeId);
-    if (!hostIslandId) throw new Error(`powered wheel ${component.id} has no structural host island`);
-    const hostIsland = islands.find((island) => island.id === hostIslandId);
-    const anchorWorld = nodes.get(component.nodeId).position;
-    const axis = normalize(component.axis);
-    const mountVector = scale(axis, component.mountOffset * component.side);
-    const center = add(anchorWorld, mountVector);
+    const hostBeam = compiledBeamById.get(component.hostBeamId);
+    if (!hostBeam) throw new Error(`powered wheel ${component.id} has no structural host beam`);
+
+    const hostLocalAxis = normalize(component.mount.axis);
+    const axis = normalize(beamLocalToMachineVector(hostBeam.frame, hostLocalAxis));
+    const hostAnchorMachine = beamLocalToMachinePoint(hostBeam.frame, component.mount.position);
+    const wheelCenterOffset = component.width * 0.5 + component.mountGap;
+    const wheelOffset = scale(axis, wheelCenterOffset);
+    const center = add(hostAnchorMachine, wheelOffset);
 
     return {
       id: component.id,
       kind: component.kind,
-      hostIslandId,
+      hostBeamId: component.hostBeamId,
+      hostIslandId: hostBeam.hostIslandId,
+      mountPosition: [...component.mount.position],
+      mountAxis: [...hostLocalAxis],
       axis,
-      side: component.side,
       center,
-      hostAnchorLocal: sub(anchorWorld, hostIsland.origin),
-      wheelAnchorLocal: scale(mountVector, -1),
+      hostAnchorMachine,
+      hostAnchorLocal: sub(hostAnchorMachine, hostBeam.islandOrigin),
+      wheelAnchorLocal: scale(wheelOffset, -1),
       colliderRotation: rotationFromPositiveY(axis),
       radius: component.radius,
       width: component.width,
+      mountGap: component.mountGap,
       density: component.density,
       motorVelocity: component.motorVelocity,
       motorDamping: component.motorDamping,
@@ -118,7 +119,7 @@ export function compileMachine(document) {
   });
 
   return {
-    version: 2,
+    version: 3,
     sourceRevision: document.revision,
     sourceFingerprint: machineFingerprint(document),
     islands,

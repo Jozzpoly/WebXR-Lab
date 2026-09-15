@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { machineFingerprint } from '../src/core/machine-document.js';
 import { createPoweredCartMachine } from '../src/core/specimens.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
+import { MACHINE_YARD_WORLD, resolveRunSpawn } from '../src/runtime/machine-yard-world.js';
 import { RapierMachineRuntime } from '../src/runtime/rapier-runtime.js';
 
 test('four authored powered wheels create whole-machine translation through contact physics', async () => {
@@ -13,7 +14,8 @@ test('four authored powered wheels create whole-machine translation through cont
   assert.equal(plan.components.length, 4);
 
   const runtime = await RapierMachineRuntime.create();
-  runtime.start(plan);
+  const spawnPose = resolveRunSpawn(plan, MACHINE_YARD_WORLD);
+  runtime.start(plan, { environment: MACHINE_YARD_WORLD, spawnPose });
   const initial = runtime.sample().get('island-1').position;
 
   for (let i = 0; i < 360; i += 1) runtime.step(1 / 90);

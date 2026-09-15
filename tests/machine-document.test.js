@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attachPoweredWheel, createSeedMachine, editPoweredWheel, extendFromNode, machineFingerprint, removeComponent, validateMachine } from '../src/core/machine-document.js';
+import {
+  attachPoweredWheel,
+  createBeam,
+  editPoweredWheel,
+  extendFromBeamEnd,
+  machineFingerprint,
+  removeComponent,
+  validateMachine,
+} from '../src/core/machine-document.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
+import { createSingleBeamMachine } from './helpers/machine-fixtures.js';
 
 const normalize = (v) => {
   const len = Math.hypot(...v);
@@ -16,9 +25,9 @@ function rotatePositiveX([x, y, z, w]) {
   ];
 }
 
-function singleBeamDocument(a, b) {
+function rawSingleBeamDocument(a, b) {
   return {
-    version: 1,
+    version: 2,
     revision: 0,
     nextIds: { node: 3, beam: 2, component: 1 },
     nodes: [
@@ -26,14 +35,16 @@ function singleBeamDocument(a, b) {
       { id: 'n2', position: b },
     ],
     beams: [
-      { id: 'b1', a: 'n1', b: 'n2', thickness: 0.12, density: 420 },
+      { id: 'b1', a: 'n1', b: 'n2', roll: 0, thickness: 0.12, density: 420 },
     ],
     components: [],
   };
 }
 
-test('seed machine is valid and compiles to one rigid island', () => {
-  const document = createSeedMachine();
+const mount = (axis = [0, 0, 1]) => ({ position: [0, 0, 0.06], axis });
+
+test('part-first single beam is valid and compiles to one rigid island', () => {
+  const document = createSingleBeamMachine();
   assert.deepEqual(validateMachine(document), []);
   const plan = compileMachine(document);
   assert.equal(plan.islands.length, 1);
@@ -41,38 +52,40 @@ test('seed machine is valid and compiles to one rigid island', () => {
   assert.deepEqual(plan.components, []);
 });
 
-test('extendFromNode is immutable and creates topology', () => {
-  const original = createSeedMachine();
+test('extendFromBeamEnd is immutable and creates welded topology', () => {
+  const original = createSingleBeamMachine();
   const before = machineFingerprint(original);
-  const next = extendFromNode(original, 'n2', [0.9, 1.12, -1.2]);
+  const next = extendFromBeamEnd(original, 'b1', 'b', [0.9, 0, -1.2]);
   assert.equal(machineFingerprint(original), before);
   assert.equal(next.nodes.length, 3);
   assert.equal(next.beams.length, 2);
-  assert.equal(next.revision, 1);
+  assert.equal(next.beams[1].roll, 0);
+  assert.equal(next.revision, original.revision + 1);
   assert.equal(compileMachine(next).islands.length, 1);
 });
 
-test('connecting existing sockets does not duplicate an existing beam', () => {
-  const document = createSeedMachine();
-  const next = extendFromNode(document, 'n1', document.nodes[1].position, 'n2');
+test('connecting existing beam ends does not duplicate an existing structural connection', () => {
+  const document = createSingleBeamMachine();
+  const next = extendFromBeamEnd(
+    document,
+    'b1',
+    'a',
+    [0.4, 0, 0],
+    { beamId: 'b1', end: 'b' },
+  );
   assert.strictEqual(next, document);
 });
 
-test('disconnected structures compile into separate rigid islands', () => {
-  let document = createSeedMachine();
-  document = extendFromNode(document, 'n2', [0.9, 1.12, -1.45]);
-  document = structuredClone(document);
-  document.nodes.push({ id: 'n99', position: [-0.5, 1.12, -2.2] });
-  document.nodes.push({ id: 'n100', position: [0.1, 1.12, -2.2] });
-  document.beams.push({ id: 'b99', a: 'n99', b: 'n100', thickness: 0.12, density: 420 });
-  document.nextIds.node = 101;
-  document.nextIds.beam = 100;
+test('disconnected authored parts compile into separate rigid islands', () => {
+  let document = createSingleBeamMachine();
+  document = extendFromBeamEnd(document, 'b1', 'b', [0.9, 0, -1.45]);
+  document = createBeam(document, [-0.5, 0, -2.2], [0.1, 0, -2.2]);
   const plan = compileMachine(document);
   assert.equal(plan.islands.length, 2);
 });
 
 test('compileMachine does not mutate authored truth', () => {
-  const document = createSeedMachine();
+  const document = createSingleBeamMachine();
   const before = machineFingerprint(document);
   const plan = compileMachine(document);
   assert.equal(plan.sourceFingerprint, before);
@@ -80,7 +93,7 @@ test('compileMachine does not mutate authored truth', () => {
 });
 
 test('authored validation rejects geometrically degenerate structural beams', () => {
-  const document = singleBeamDocument([0, 1, 0], [0.01, 1, 0]);
+  const document = rawSingleBeamDocument([0, 1, 0], [0.01, 1, 0]);
   assert.match(validateMachine(document).join('\n'), /shorter than/);
   assert.throws(() => compileMachine(document), /shorter than/);
 });
@@ -94,7 +107,7 @@ test('compiled beam rotation maps local +X onto authored direction', () => {
   ];
 
   for (const [a, b] of cases) {
-    const beam = compileMachine(singleBeamDocument(a, b)).islands[0].beams[0];
+    const beam = compileMachine(createSingleBeamMachine(a, b)).islands[0].beams[0];
     const actual = normalize(rotatePositiveX(beam.localRotation));
     const expected = normalize([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
     const dot = actual[0] * expected[0] + actual[1] * expected[1] + actual[2] * expected[2];
@@ -102,57 +115,60 @@ test('compiled beam rotation maps local +X onto authored direction', () => {
   }
 });
 
-test('powered wheel authoring is immutable and compiles against the structural host island', () => {
-  const original = createSeedMachine();
+test('powered wheel authoring is immutable and compiles against the structural host beam', () => {
+  const original = createSingleBeamMachine();
   const before = machineFingerprint(original);
-  const next = attachPoweredWheel(original, 'n1', { axis: [0, 0, 2], motorVelocity: 7 });
+  const next = attachPoweredWheel(original, 'b1', { mount: mount([0, 0, 2]), motorVelocity: 7 });
 
   assert.equal(machineFingerprint(original), before);
   assert.equal(next.components.length, 1);
-  assert.equal(next.revision, 1);
+  assert.equal(next.revision, original.revision + 1);
+  assert.equal(next.components[0].hostBeamId, 'b1');
+  assert.deepEqual(next.components[0].mount.axis, [0, 0, 1]);
 
   const wheel = compileMachine(next).components[0];
   assert.equal(wheel.kind, 'powered-wheel');
+  assert.equal(wheel.hostBeamId, 'b1');
   assert.equal(wheel.hostIslandId, 'island-1');
   assert.deepEqual(wheel.axis, [0, 0, 1]);
   assert.equal(wheel.motorVelocity, 7);
-  assert.deepEqual(wheel.hostAnchorLocal, [-0.4, 0, 0]);
+  assert.deepEqual(wheel.hostAnchorMachine, [0, 0, 0.06]);
 });
 
-test('powered wheel requires a real structural host and non-zero axis', () => {
-  const isolated = createSeedMachine();
-  isolated.nodes.push({ id: 'n3', position: [0, 1, -2] });
-  isolated.nextIds.node = 4;
-  assert.throws(() => attachPoweredWheel(isolated, 'n3'), /structural node/);
-  assert.throws(() => attachPoweredWheel(createSeedMachine(), 'n1', { axis: [0, 0, 0] }), /non-zero/);
+test('powered wheel requires a real structural host beam and non-zero mount axis', () => {
+  assert.throws(() => attachPoweredWheel(createSingleBeamMachine(), 'missing', { mount: mount() }), /host beam/);
+  assert.throws(() => attachPoweredWheel(createSingleBeamMachine(), 'b1', { mount: mount([0, 0, 0]) }), /non-zero/);
 });
 
-test('powered-wheel editing preserves identity, authored immutability and explicit intent', () => {
-  const original = attachPoweredWheel(createSeedMachine(), 'n1', { axis: [1, 0, 0], side: -1, motorVelocity: 8 });
+test('powered-wheel editing preserves identity, authored immutability and explicit mount intent', () => {
+  const original = attachPoweredWheel(createSingleBeamMachine(), 'b1', { mount: mount(), motorVelocity: 8 });
   const before = machineFingerprint(original);
   const id = original.components[0].id;
 
-  const next = editPoweredWheel(original, id, { side: 1, motorVelocity: -8 });
+  const flippedMount = { position: [...original.components[0].mount.position], axis: [0, 0, -1] };
+  const next = editPoweredWheel(original, id, { mount: flippedMount, motorVelocity: -8 });
 
   assert.equal(machineFingerprint(original), before);
   assert.equal(next.components[0].id, id);
-  assert.equal(next.components[0].side, 1);
+  assert.deepEqual(next.components[0].mount.axis, [0, 0, -1]);
   assert.equal(next.components[0].motorVelocity, -8);
   assert.equal(next.revision, original.revision + 1);
   const compiled = compileMachine(next).components[0];
   assert.equal(compiled.id, id);
   assert.equal(compiled.motorVelocity, -8);
+  assert.deepEqual(compiled.mountAxis, [0, 0, -1]);
 });
 
 test('powered-wheel editing rejects fields that would silently change component identity or host', () => {
-  const document = attachPoweredWheel(createSeedMachine(), 'n1');
+  const document = attachPoweredWheel(createSingleBeamMachine(), 'b1', { mount: mount() });
   const id = document.components[0].id;
+  assert.throws(() => editPoweredWheel(document, id, { hostBeamId: 'b2' }), /unsupported powered-wheel edit field/);
   assert.throws(() => editPoweredWheel(document, id, { nodeId: 'n2' }), /unsupported powered-wheel edit field/);
-  assert.throws(() => editPoweredWheel(document, id, { side: 0 }), /invalid side/);
+  assert.throws(() => editPoweredWheel(document, id, { mount: mount([0, 0, 0]) }), /non-zero/);
 });
 
 test('component removal is immutable and leaves authored ids monotonic', () => {
-  const original = attachPoweredWheel(createSeedMachine(), 'n1');
+  const original = attachPoweredWheel(createSingleBeamMachine(), 'b1', { mount: mount() });
   const before = machineFingerprint(original);
   const removedId = original.components[0].id;
   const next = removeComponent(original, removedId);
@@ -162,6 +178,6 @@ test('component removal is immutable and leaves authored ids monotonic', () => {
   assert.equal(next.revision, original.revision + 1);
   assert.equal(next.nextIds.component, original.nextIds.component);
 
-  const readded = attachPoweredWheel(next, 'n2');
+  const readded = attachPoweredWheel(next, 'b1', { mount: mount([0, 0, -1]) });
   assert.notEqual(readded.components[0].id, removedId);
 });

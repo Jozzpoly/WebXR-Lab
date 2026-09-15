@@ -1,6 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat';
+import { MACHINE_YARD_WORLD, resolveRunSpawn, transformPoint } from './machine-yard-world.js';
 
 const vec = ([x, y, z]) => ({ x, y, z });
+const quat = ([x, y, z, w]) => ({ x, y, z, w });
 
 export class RapierMachineRuntime {
   static async create() {
@@ -11,30 +13,43 @@ export class RapierMachineRuntime {
   constructor() {
     this.world = null;
     this.plan = null;
+    this.environment = null;
+    this.spawnPose = null;
     this.bodies = new Map();
     this.joints = new Map();
     this.accumulator = 0;
     this.fixedDt = 1 / 90;
   }
 
-  start(plan) {
+  start(plan, { environment = MACHINE_YARD_WORLD, spawnPose = null } = {}) {
     this.stop();
     this.plan = plan;
+    this.environment = environment;
+    this.spawnPose = spawnPose ?? resolveRunSpawn(plan, environment);
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     this.world.timestep = this.fixedDt;
 
-    const floor = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.08, -1.5),
-    );
-    this.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(5.5, 0.08, 5.5).setFriction(0.9),
-      floor,
-    );
+    for (const surface of environment.surfaces ?? []) {
+      if (surface.shape !== 'box') throw new Error(`unsupported environment collider shape: ${surface.shape}`);
+      const body = this.world.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(...surface.center),
+      );
+      this.world.createCollider(
+        RAPIER.ColliderDesc
+          .cuboid(...surface.halfExtents)
+          .setFriction(surface.friction ?? 0.8)
+          .setRestitution(surface.restitution ?? 0),
+        body,
+      );
+    }
+
+    const spawnRotation = quat(this.spawnPose.rotation);
 
     for (const island of plan.islands) {
       const body = this.world.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic()
-          .setTranslation(...island.origin)
+          .setTranslation(...transformPoint(island.origin, this.spawnPose))
+          .setRotation(spawnRotation)
           .setLinearDamping(0.08)
           .setAngularDamping(0.08),
       );
@@ -61,7 +76,8 @@ export class RapierMachineRuntime {
 
       const wheelBody = this.world.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic()
-          .setTranslation(...component.center)
+          .setTranslation(...transformPoint(component.center, this.spawnPose))
+          .setRotation(spawnRotation)
           .setLinearDamping(0.04)
           .setAngularDamping(0.03),
       );
@@ -125,6 +141,8 @@ export class RapierMachineRuntime {
     this.joints.clear();
     this.bodies.clear();
     this.plan = null;
+    this.environment = null;
+    this.spawnPose = null;
     this.accumulator = 0;
     if (this.world) {
       this.world.free();

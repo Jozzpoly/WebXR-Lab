@@ -2,11 +2,17 @@ import * as THREE from 'three';
 
 const tireGeometry = new THREE.CylinderGeometry(1, 1, 1, 28, 1, false);
 const hubGeometry = new THREE.CylinderGeometry(1, 1, 1, 20, 1, false);
-const proxyGeometry = new THREE.SphereGeometry(1, 12, 8);
 const previewMaterial = new THREE.MeshBasicMaterial({ color: 0x6ef0cf, transparent: true, opacity: 0.34, depthWrite: false });
 const previewHubMaterial = new THREE.MeshBasicMaterial({ color: 0xb8fff0, transparent: true, opacity: 0.52, depthWrite: false });
 const proxyMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-const selectionMaterial = new THREE.MeshBasicMaterial({ color: 0x70e9ff, wireframe: true, transparent: true, opacity: 0.72, depthWrite: false });
+const selectionMaterial = new THREE.MeshBasicMaterial({
+  color: 0x70e9ff,
+  wireframe: true,
+  transparent: true,
+  opacity: 0.72,
+  depthWrite: false,
+  depthTest: false,
+});
 
 function createPreviewShape(component) {
   const root = new THREE.Group();
@@ -18,10 +24,12 @@ function createPreviewShape(component) {
 
   const tire = new THREE.Mesh(tireGeometry, previewMaterial);
   tire.scale.set(component.radius, component.width, component.radius);
+  tire.userData.wheelPreviewTarget = true;
   shape.add(tire);
 
   const hub = new THREE.Mesh(hubGeometry, previewHubMaterial);
   hub.scale.set(component.radius * 0.34, component.width * 1.18, component.radius * 0.34);
+  hub.userData.wheelPreviewTarget = true;
   shape.add(hub);
 
   const axis = new THREE.ArrowHelper(
@@ -53,7 +61,7 @@ export class ComponentInteractionLayer {
     this.view = view;
     this.view.componentInteractionLayer = this;
     this.group = new THREE.Group();
-    this.view.workspaceRoot.add(this.group);
+    this.view.machineAuthoringRoot.add(this.group);
 
     this.targets = new Map();
     this.raycaster = new THREE.Raycaster();
@@ -63,9 +71,45 @@ export class ComponentInteractionLayer {
     this.previewRoot.visible = false;
     this.group.add(this.previewRoot);
 
-    this.selection = new THREE.Mesh(proxyGeometry, selectionMaterial);
+    this.selection = new THREE.Mesh(tireGeometry, selectionMaterial);
     this.selection.visible = false;
+    this.selection.renderOrder = 30;
     this.group.add(this.selection);
+
+    if (typeof window !== 'undefined' && import.meta.env?.DEV) {
+      const layer = this;
+      window.__riftworksDesktopEvidence = Object.freeze({
+        cameraRight() {
+          return new THREE.Vector3(1, 0, 0).applyQuaternion(view.camera.quaternion).normalize().toArray();
+        },
+        projectMachinePoint(point) {
+          if (!Array.isArray(point) || point.length !== 3 || !point.every(Number.isFinite)) return null;
+          const rect = view.renderer.domElement.getBoundingClientRect();
+          const world = view.machineToWorldPoint(new THREE.Vector3(...point));
+          const projected = world.project(view.camera);
+          return {
+            x: rect.x + (projected.x + 1) * 0.5 * rect.width,
+            y: rect.y + (1 - projected.y) * 0.5 * rect.height,
+          };
+        },
+        beamSurfaceAt(clientX, clientY) {
+          const hit = view.pickBeamSurface(clientX, clientY);
+          return hit ? {
+            beamId: hit.beamId,
+            localPosition: [...hit.localPosition],
+            localNormal: [...hit.localNormal],
+            distance: hit.distance,
+          } : null;
+        },
+        previewMachinePosition() {
+          if (!layer.previewRoot.visible || layer.previewRoot.children.length === 0) return null;
+          return layer.previewRoot.children[0].position.toArray();
+        },
+        componentMachinePosition(componentId) {
+          return layer.targets.get(componentId)?.position.toArray() ?? null;
+        },
+      });
+    }
   }
 
   sync(plan) {
@@ -74,41 +118,63 @@ export class ComponentInteractionLayer {
 
     for (const component of plan.components ?? []) {
       if (component.kind !== 'powered-wheel') continue;
-      const proxy = new THREE.Mesh(proxyGeometry, proxyMaterial);
+      const proxy = new THREE.Mesh(tireGeometry, proxyMaterial);
       proxy.position.set(...component.center);
-      const radius = Math.max(component.radius, component.width) + 0.09;
-      proxy.scale.setScalar(radius);
+      proxy.quaternion.set(...component.colliderRotation);
+      proxy.scale.set(component.radius * 1.05, component.width * 1.2, component.radius * 1.05);
       proxy.userData.componentId = component.id;
-      proxy.userData.componentRadius = radius;
+      proxy.userData.componentRadius = Math.max(component.radius, component.width) + 0.09;
       this.targets.set(component.id, proxy);
       this.group.add(proxy);
     }
+
+    this.group.updateWorldMatrix(true, true);
   }
 
-  pickPointer(clientX, clientY) {
+  #pointerRay(clientX, clientY) {
     const rect = this.view.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.view.camera);
-    const hit = this.raycaster.intersectObjects([...this.targets.values()], false)[0];
-    return hit?.object.userData.componentId ?? null;
   }
 
-  pickController(controller) {
+  pickPointerHit(clientX, clientY) {
+    this.#pointerRay(clientX, clientY);
+    const hit = this.raycaster.intersectObjects([...this.targets.values()], false)[0];
+    return hit ? { componentId: hit.object.userData.componentId, distance: hit.distance } : null;
+  }
+
+  pickPointer(clientX, clientY) {
+    return this.pickPointerHit(clientX, clientY)?.componentId ?? null;
+  }
+
+  pickPreviewPointer(clientX, clientY) {
+    if (!this.previewRoot.visible) return false;
+    this.previewRoot.updateWorldMatrix(true, true);
+    this.#pointerRay(clientX, clientY);
+    const hits = this.raycaster.intersectObject(this.previewRoot, true);
+    return hits.some((hit) => hit.object.userData.wheelPreviewTarget === true);
+  }
+
+  pickControllerHit(controller) {
     controller.updateWorldMatrix(true, false);
     const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
     const direction = new THREE.Vector3(0, 0, -1).transformDirection(controller.matrixWorld);
     this.raycaster.set(origin, direction);
     const hit = this.raycaster.intersectObjects([...this.targets.values()], false)[0];
-    return hit?.object.userData.componentId ?? null;
+    return hit ? { componentId: hit.object.userData.componentId, distance: hit.distance } : null;
   }
 
-  nearest(localPoint, minimumRadius = 0.24) {
+  pickController(controller) {
+    return this.pickControllerHit(controller)?.componentId ?? null;
+  }
+
+  nearest(machinePoint, minimumRadius = 0.24) {
     let best = null;
     let bestDistance = Infinity;
     for (const [id, proxy] of this.targets) {
       const reach = Math.max(minimumRadius, proxy.userData.componentRadius ?? 0);
-      const distance = localPoint.distanceTo(proxy.position);
+      const distance = machinePoint.distanceTo(proxy.position);
       if (distance <= reach && distance < bestDistance) {
         best = id;
         bestDistance = distance;
@@ -150,7 +216,8 @@ export class ComponentInteractionLayer {
       return;
     }
     this.selection.position.copy(target.position);
-    this.selection.scale.copy(target.scale).multiplyScalar(1.16);
+    this.selection.quaternion.copy(target.quaternion);
+    this.selection.scale.copy(target.scale).multiplyScalar(1.08);
     this.selection.visible = true;
   }
 }
