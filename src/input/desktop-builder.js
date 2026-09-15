@@ -56,7 +56,13 @@ export function attachDesktopBuilder({
 
     const movement = Math.hypot(event.clientX - operation.startX, event.clientY - operation.startY);
     if (!operation.active && movement < DIRECT_ISLAND_DRAG_THRESHOLD_PX) return true;
-    operation.active = true;
+    if (!operation.active) {
+      operation.active = true;
+      if (operation.selectionPending) {
+        selectBeam(operation.beamId);
+        operation.selectionPending = false;
+      }
+    }
 
     const point = pointOnCameraFacingMachinePlane(
       view,
@@ -75,8 +81,12 @@ export function attachDesktopBuilder({
   };
 
   const updateDrag = (event) => {
-    if (!isDesktopActive() || !state.operation || !state.dragAnchor || !isBuildMode() || getTool() !== 'beam') return;
-    if (updateIslandDrag(event)) return;
+    if (!isDesktopActive() || !state.operation || !state.dragAnchor || !isBuildMode()) return;
+    if (state.operation.kind === 'island-move') {
+      updateIslandDrag(event);
+      return;
+    }
+    if (getTool() !== 'beam') return;
 
     const point = pointOnCameraFacingMachinePlane(
       view,
@@ -143,7 +153,7 @@ export function attachDesktopBuilder({
     event.preventDefault();
   };
 
-  const beginIslandDrag = (hit, event) => {
+  const beginIslandDrag = (hit, event, { selectionPending = false } = {}) => {
     const frame = getBeamFrame(getDocument(), hit.beamId);
     const grabPoint = beamLocalToMachinePoint(frame, hit.localPosition);
     state.operation = {
@@ -152,6 +162,7 @@ export function attachDesktopBuilder({
       startX: event.clientX,
       startY: event.clientY,
       active: false,
+      selectionPending,
     };
     state.pointerId = event.pointerId;
     state.dragAnchor = [...grabPoint];
@@ -182,7 +193,8 @@ export function attachDesktopBuilder({
     if (!isDesktopActive() || event.button !== 0 || !isBuildMode()) return;
 
     const componentLayer = view.componentInteractionLayer;
-    if (getTool() === 'powered-wheel' && componentLayer?.pickPreviewPointer(event.clientX, event.clientY)) return;
+    const previewHit = getTool() === 'powered-wheel'
+      && Boolean(componentLayer?.pickPreviewPointer(event.clientX, event.clientY));
 
     if (getTool() === 'beam') {
       const handle = structuralLayer.pickPointer(event.clientX, event.clientY);
@@ -201,10 +213,10 @@ export function attachDesktopBuilder({
     if (authoredHit?.kind === 'component') return;
 
     if (authoredHit?.kind === 'beam') {
-      selectBeam(authoredHit.beamId);
-      beginIslandDrag(authoredHit, event);
+      if (!previewHit) selectBeam(authoredHit.beamId);
+      beginIslandDrag(authoredHit, event, { selectionPending: previewHit });
       event.preventDefault();
-      event.stopImmediatePropagation();
+      if (!previewHit) event.stopImmediatePropagation();
       return;
     }
 
