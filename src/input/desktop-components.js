@@ -2,6 +2,11 @@ import { proposePoweredWheelPlacement } from './wheel-placement.js';
 
 const DRAG_THRESHOLD_PX = 6;
 
+function changesDesktopAuthoringContext(event) {
+  if ((event.ctrlKey || event.metaKey) && String(event.key ?? '').toLowerCase() === 'z') return true;
+  return ['Space', 'Escape', 'Delete', 'Backspace', 'Digit1', 'Digit2'].includes(event.code);
+}
+
 export function attachDesktopComponents({
   view,
   componentLayer,
@@ -220,6 +225,10 @@ export function attachDesktopComponents({
     if (!componentDrag && !pendingPlacement) clearPreview();
   };
   const onXrSessionStart = () => cancelDesktopTransient();
+  const onKeyDown = (event) => {
+    if (!isDesktopActive() || !changesDesktopAuthoringContext(event)) return;
+    if (previewCandidate || pendingPlacement || componentDrag) cancelDesktopTransient();
+  };
 
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerdown', onPointerDown);
@@ -227,6 +236,7 @@ export function attachDesktopComponents({
   canvas.addEventListener('pointercancel', onPointerCancel);
   canvas.addEventListener('pointerleave', onPointerLeave);
   view.renderer.xr.addEventListener('sessionstart', onXrSessionStart);
+  if (typeof window !== 'undefined') window.addEventListener('keydown', onKeyDown);
 
   return () => {
     cancelDesktopTransient();
@@ -236,5 +246,6 @@ export function attachDesktopComponents({
     canvas.removeEventListener('pointercancel', onPointerCancel);
     canvas.removeEventListener('pointerleave', onPointerLeave);
     view.renderer.xr.removeEventListener('sessionstart', onXrSessionStart);
+    if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeyDown);
   };
 }
