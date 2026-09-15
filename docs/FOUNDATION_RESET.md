@@ -1,187 +1,211 @@
 # Riftworks R0 — foundation reset
 
-Status: active design + falsification branch (`foundation-reset`).
+Status: active design + falsification branch (`foundation-reset`), mechanically strong enough for continued construction-grammar research but not merge-authorized.
 
-This reset is driven by Owner evidence, not speculative cleanup. The current B1.2 surface proved useful VR direction, but also exposed foundational faults that make incremental polish unsafe.
+R0 is driven by Owner evidence, not speculative cleanup. B1.2 established useful WebXR direction but exposed foundational faults that made incremental polish unsafe.
 
-## Owner evidence that invalidates the current foundation
+## Owner evidence that triggered R0
 
 Observed in the 2026-09-15 Owner run:
 
-- a running machine can appear to drive on empty air and later fall through the visible room;
-- wheels placed in apparently sensible side positions can fail to create useful locomotion;
-- creation feels raw, indirect and wrong rather than like manipulating a machine in a workshop;
-- the current system is too dependent on hidden inference and implementation topology;
-- visual/feedback work is desirable later, but must not begin while spatial, mechanical and authoring truth remain unstable.
+- a running machine could appear to drive on empty air and later fall through the visible room;
+- wheels placed in apparently sensible side positions could fail because mounting intent was inferred from unrelated machine geometry;
+- creation exposed raw implementation topology and felt unlike manipulating a machine in a workshop;
+- spatial, mechanical and authoring truth were not aligned strongly enough to support further feature growth.
 
-These are material findings. They are not polish bugs.
+These were foundation findings, not polish bugs.
 
-## Root causes already demonstrated
+## Root causes recovered
 
 ### 1. Render world and simulation world diverged
 
-The tabletop refactor moved authored/runtime visuals under a movable `WorkspaceRoot`, while Rapier kept an anonymous fixed floor in its old coordinate system. The result is an invisible physical plane at workbench height that extends far beyond the visible workbench. A machine can therefore drive through visible empty air, then leave that collider and fall through the room because the visible room floor has no matching physics authority.
+Authored/runtime visuals had moved under a movable workspace while Rapier kept an anonymous fixed floor in another coordinate frame. A machine could therefore drive on invisible collision and later fall through the visible room.
 
-This class of bug must become structurally impossible.
+R0 replaced this with shared semantic world authority and an explicit Machine-local → Simulation-world RUN spawn.
 
-### 2. Wheel placement has no real mounting semantics
+### 2. Wheel placement lacked real mounting semantics
 
-A powered wheel currently attaches to a structural node and its axis is inferred from that node's position relative to the centroid of the whole structure. This does not represent the place or orientation at which the Owner actually mounted a wheel. The heuristic can be deterministic, testable and still be semantically wrong.
+A powered wheel previously attached through structural topology and inferred orientation from the whole-machine centroid. The heuristic could be deterministic and still semantically wrong.
 
-Centroid-based mounting inference is retired as an architectural direction.
+R0 retired centroid/node inference in favor of a concrete host beam plus host-local mount frame.
 
-### 3. The user is manipulating implementation topology
+### 3. The public grammar exposed implementation topology
 
-The current document exposes nodes as universal construction sockets. Beams are edges between nodes and powered wheels attach to nodes. This was adequate for B0 proof but is not a sufficient workshop interaction model. A node graph may remain useful internally, but it must not define the entire user-facing grammar.
+Nodes remain useful internal welded-topology data, but they are no longer the public construction grammar. The user manipulates parts and physical relationships.
 
-### 4. Input adapters can interfere through shared transient state
+### 4. Input adapters could preserve stale transient authority
 
-Desktop and XR can correctly converge into the same authored commands and still corrupt the interaction surface if inactive adapters keep touching shared ghosts, previews or drags.
+Desktop and XR can share authored commands while still corrupting interaction if old previews/drags survive context transitions.
 
-The desktop browser gate demonstrated a concrete failure: a valid mouse hover produced the correct wheel candidate, but the inactive XR per-frame adapter immediately cleared that preview because no XR grip candidate existed. The same inactive XR branch could hide a desktop structural ghost. The inverse boundary was also incomplete: desktop canvas gestures were still live during immersive XR, `pointercancel` could commit a structural drag, and late XR controller lifecycle events could touch restored desktop transient state.
+R0 first established desktop/XR ownership boundaries and true cancellation on session handoff. A later adversarial audit found a second class of stale-context bugs: structural/component gestures could survive BUILD/RUN, tool, selection or destructive context changes and then commit after the interaction reality had changed.
 
-This is not authored-data corruption, but it is an authority failure at the input/presentation boundary. R0 now treats transient interaction ownership explicitly.
+Current durable rule:
+
+> **A transient gesture belongs to the context in which it began. If that context changes materially, the gesture is cancelled; it is never carried forward and committed in the new context.**
+
+This now applies across the defended desktop and XR paths. Workspace grab also cancels older direct drags before taking exclusive workspace-translation authority.
+
+This does **not** define final bimanual construction policy. Simultaneous two-hand authoring remains an open construction-grammar question rather than something to prohibit merely for implementation convenience.
 
 ## R0 durable contracts
 
-### A. One simulation world truth
+### A. One simulation-world truth
 
-- The visible test environment and physical test environment must come from one shared environment description.
-- Rapier must never create an anonymous floor that has no corresponding visible surface.
-- Runtime rigid-body poses are world-space simulation truth.
-- Runtime visuals live in world space, not under the authoring workspace transform.
-- The authoring workbench may move without changing the simulation environment.
+- Visible physical environment and fixed runtime colliders derive from shared semantic world descriptions.
+- Rapier does not own anonymous floors with no visible counterpart.
+- Runtime rigid-body poses are simulation-world truth.
+- Runtime visuals live in world space rather than inheriting authoring-workspace transforms.
+- Moving the authoring workspace cannot move the simulation environment.
 
 ### B. Explicit BUILD → RUN mapping
 
-Three spaces are allowed, with explicit boundaries:
+Three spaces have explicit jobs:
 
 1. **Machine local** — authored machine geometry and intent.
-2. **Authoring workspace** — presentation/input transform used to place the machine comfortably in desktop/VR.
-3. **Simulation world** — physical room/test-yard coordinates.
+2. **Authoring workspace** — movable presentation/input transform.
+3. **Simulation world** — physical Machine Yard coordinates.
 
-`MachineDocument` must not contain workbench height/room placement merely because it is convenient for rendering.
+`MachineDocument` does not contain workbench/room placement merely for rendering convenience. RUN compiles authored machine-local truth and instantiates it through one explicit spawn mapping. STOP discards runtime motion and returns to unchanged authored truth.
 
-RUN must instantiate a machine-local compiled plan through an explicit `runSpawn` transform into the simulation world. STOP discards runtime state and restores the unchanged authored document.
+### C. Parts first; topology supports them
 
-### C. Environment geometry is shared authority
-
-A single descriptor must drive both:
-
-- visible floor/workbench/test surfaces where relevant;
-- fixed Rapier colliders for those same physical surfaces.
-
-A test must be able to assert correspondence between visible/semantic surfaces and runtime colliders without inspecting Three.js pixels.
-
-### D. Parts first; topology is supporting data
-
-The Owner should think in parts and relationships, not implementation nodes.
-
-For R0 the supported authored surface remains deliberately narrow:
+The intentionally narrow R0 authored surface is:
 
 - structural beam/member;
 - powered wheel.
 
-A structural node graph may continue to represent welded beam topology internally if it remains useful, but it is not a universal attachment API.
+Internal welded nodes support topology but are not a universal user-facing socket API.
 
-### E. A wheel mounts to a host part through an explicit mount frame
+### D. Explicit host-relative wheel mounts
 
-A powered wheel must record *where and how* it is mounted. The narrow R0 target is a beam-hosted mount frame rather than a universal future attachment ontology.
+A powered wheel records concrete mechanical intent:
 
-Minimum durable intent:
+- `hostBeamId`;
+- host-local mount position;
+- host-local normalized axle direction;
+- wheel dimensions / mount gap / density;
+- signed motor intent and damping.
 
-- host structural part identity;
-- position in the host part's local frame;
-- orientation/axle in the host part's local frame;
-- wheel dimensions;
-- motor direction/speed.
+Convenience inference may propose a candidate from a real beam surface. The compiler resolves the authored host-relative frame and does not rediscover intent from centroid, viewport or incidental world position.
 
-The compiler resolves that explicit frame. It does not re-infer wheel orientation from machine centroid, viewport direction or incidental global position.
+### E. Direct revision rather than fire-and-forget stamping
 
-### F. Convenience inference proposes; direct manipulation decides
+Placed components remain persistent authored objects. They can be selected, revised and rehosted while preserving identity. Undo is history, not the primary editing model.
 
-Inference may generate a placement candidate from a beam hit point/surface normal/controller pose, but before commit the exact candidate must be visible and overridable.
+Current desktop whole-welded-island translation is a bounded interaction experiment. A welded island is a derived rigid connected component, not an authored `Assembly` identity or a promise about future articulated mechanisms.
 
-Existing parts remain directly editable after placement. Undo is not a substitute for editing.
+### F. Transient authority is explicit
 
-### G. Regression gates describe Owner-visible truths
+- desktop adapters are inert while immersive XR owns transient state;
+- XR per-frame authoring is inert outside XR and cannot erase desktop state;
+- session handoff/disconnect cancels outgoing transient gestures;
+- incompatible BUILD/RUN, tool, selection and destructive context changes cancel in-flight gestures;
+- system cancellation never becomes an authored commit;
+- interaction proxies/handles are pick-ready when synchronized;
+- workspace translation has exclusive transient authority while active.
 
-CI must protect behavior, not implementation trivia.
+Do not inflate this into a generic multi-input framework without a demonstrated need.
 
-R0 acceptance requires tests for at least:
+### G. Regression gates defend Owner-visible truths
 
-- moving the authoring workspace cannot move/change simulation-world environment truth;
-- a machine RUN spawn is independent of workbench transform;
-- the machine can leave the workbench/test spawn area and land/contact the actual visible world floor instead of an invisible plane;
-- wheel mount orientation is stable under machine translation/rotation and unrelated geometry changes;
-- equivalent left/right wheel mounts produce coherent locomotion semantics;
-- RUN/STOP never mutates authored truth;
-- current B0 powered-cart causal motion remains demonstrable after the spatial rewrite;
-- desktop and XR browser paths execute the same authored semantics through real interaction events.
+Tests and rehearsals should defend outcomes such as:
 
-### H. One owner for transient interaction state
+- visible/physical world correspondence;
+- workspace-independent RUN spawn;
+- RUN/STOP authored-state preservation;
+- real contact-driven powered-wheel consequences;
+- explicit and topology-stable host-relative mounting;
+- part-first CREATE/MOVE/EXTEND semantics;
+- direct wheel rehosting with identity preservation;
+- cancellation of stale gestures across input/context transitions;
+- real browser execution of desktop and emulated XR interaction paths.
 
-Authored commands are shared. Transient input state is not concurrently owned.
+## Current verified checkpoint
 
-- outside immersive XR, desktop canvas adapters own desktop pointer captures, construction ghosts and component previews;
-- immersive XR session start cancels unfinished outgoing desktop drags/previews before XR takes ownership;
-- while XR is presenting, desktop canvas adapters are inert with respect to XR-owned transient state;
-- outside immersive XR, XR per-frame authoring logic is inert and cannot clear desktop previews/ghosts;
-- session end/disconnect clears outgoing XR transient state without allowing late XR events to mutate the restored desktop state;
-- `pointercancel` and session handoff are cancellation boundaries, never implicit authored commits;
-- interaction geometry must be pick-ready after synchronization rather than depending on an unrelated render frame.
+Current branch/evidence head:
 
-This contract is deliberately narrow. It does not yet declare that every HTML/keyboard command surface must be disabled during XR; that is a separate UX/product decision and should be driven by Owner evidence rather than inferred from this transient-state bug.
+`402527936d870ed3b3fa3b7b3c2e31872d655f68`
 
-## Current automated checkpoint
+GitHub `Verify Riftworks` run `34997954464` (#207):
 
-Verified runtime checkpoint: `8095a2ab78cf2971781defa4d3b979af5d22d7bd`.
-
-GitHub `Verify Riftworks` run `34971117954` (#151):
-
-- Node contract/physics suite: **58/58 PASS**;
+- locked `npm ci` dependency install: **PASS**, 0 reported vulnerabilities;
+- Node contract / physics / gesture / evidence suite: **73/73 PASS**;
 - production build: **PASS**;
-- real desktop Chromium mouse rehearsal: **7/7 PASS**;
-- Chromium + IWER immersive controller rehearsal: **18/18 PASS**.
+- production runtime fingerprint verification: **PASS**;
+- real Chromium desktop rehearsal: **8/8 PASS**;
+- Chromium + IWER immersive rehearsal: **18/18 PASS**;
+- public branch-preview runtime attribution: **PASS**.
 
-This checkpoint includes executable contracts for desktop/XR transient ownership, true `pointercancel` semantics, session handoff cancellation, and immediate pick-readiness of synchronized component proxies and structural handles.
+Verified runtime fingerprint:
 
-Automated GREEN is not Owner or hardware acceptance. It only advances the evidence ladder to the human interaction gates below.
+`f132c978549f`
 
-## Interaction direction after the core contracts are green
+Verified public branch preview:
 
-The builder should move toward a real workshop loop:
+`https://foundation-reset-webxr-lab.jozzpoly.workers.dev`
 
-- grab/select a real part, not an abstract mode first;
-- drag/create structural members directly;
-- mount a wheel onto a real host surface/part and see its exact candidate pose before commit;
-- change side/orientation/motor intent without deleting and rebuilding;
-- preserve permissiveness: strange machines may run if they are mechanically representable;
-- diagnostics explain invalid or unstable intent rather than silently correcting it.
+The preview was independently fetched by Verify #207 and shown to serve the exact `f132c978549f` runtime built by that run.
 
-This is a direction, not permission to build a large generic editor before the two-part surface is good.
+### New authority regressions in this checkpoint
+
+The 73-test suite now explicitly defends:
+
+- desktop structural creation cannot survive a Space BUILD/RUN context change and commit later;
+- a pending desktop wheel placement cannot survive a tool-context change and stamp later;
+- an XR structural grip cannot survive a trigger-driven RUN/STOP context transition and commit afterward.
+
+The existing browser rehearsals continue to pass unchanged, showing that cancellation hardening did not break the established construction loop.
+
+## Current evidence ladder
+
+Current status by evidence type:
+
+1. **Core/document semantics** — strong automated PASS.
+2. **Runtime physics/world authority** — strong automated PASS for defended cases.
+3. **Desktop real-browser lifecycle** — PASS for the automated path; human feel remains an Owner question.
+4. **IWER WebXR lifecycle/transform path** — PASS for the automated path.
+5. **Owner desktop evidence** — already removed the original invisible-plane/world-authority failure class from normal observed use; newer direct-grab feel still remains open.
+6. **Physical Quest evidence** — **UNPROVEN / deferred until hardware access exists**.
+
+IWER deliberately uses programmatic controller poses and is therefore strong evidence for event/state/coordinate behavior, not for reach, comfort, tracking feel or embodied ergonomics.
+
+Physical Quest access is currently unknown. This does **not** freeze R&D. Until hardware exists, continue extracting honest value from desktop interaction, adversarial/state-machine testing, model/property tests, browser automation, IWER and other reproducible internal evidence.
+
+Never call those layers physical-Quest proof.
+
+## Active direction while Quest is unavailable
+
+Continue construction-grammar discovery without broadening the mechanical catalog.
+
+High-value work includes:
+
+- falsifying state/intent arbitration and stale-state failure modes;
+- improving causal readability where it affects construction understanding rather than decoration;
+- bounded desktop interaction experiments that teach us about part/rigid-fragment intent without being assumed to define VR gestures;
+- adversarial or model-based sequences that can find real authority/topology errors before a human encounters them;
+- preserving a clean hardware-ready candidate so future Quest access can immediately produce new evidence instead of requiring repair/setup first.
+
+Do not turn missing hardware into an excuse to guess at comfort/reach/haptics. Those questions remain honestly open.
 
 ## Deliberate non-goals during R0
 
-Do not add hinge, suspension, steering, thruster, richer materials, audio, visual polish, particles or decorative UX passes.
+Do not add Hinge, Servo, Thruster, suspension, richer materials or a generic component/assembly framework simply because automation is green.
 
-Do not generalize mount frames into a universal ECS/constraint ontology until Beam + Powered Wheel produce a convincing build → run → observe → improve loop.
+Do not generalize host frames into a universal ECS/constraint ontology before real mechanisms earn that abstraction.
 
-Do not generalize the newly explicit input ownership boundary into a broad multi-user/input framework. Its current job is to keep desktop and immersive adapters from corrupting each other's ephemeral interaction state.
+Do not automatically copy the desktop welded-island drag into XR. If rigid direct manipulation survives later evidence, design a native VR mapping rather than mouse parity.
 
-Do not call IWER/desktop evidence physical-Quest ergonomics evidence.
+Do not treat decorative visual/audio/haptic polish as the next default tranche. Causal feedback that reveals host, snap, axis, rigid-fragment scope or predicted mechanical consequence may be construction grammar and can be justified separately.
 
-## Evidence ladder for R0
+## Merge boundary
 
-1. **RED contracts** — tests/browser gates expose spatial, mounting or interaction-authority failures.
-2. **Core GREEN** — machine/world/mount semantics pass without browser presentation.
-3. **Runtime GREEN** — Rapier environment + spawn + wheel locomotion consequences pass.
-4. **Desktop browser GREEN** — real mouse events execute the current blank-workshop part lifecycle through RUN/STOP.
-5. **IWER browser GREEN** — the immersive controller path executes the corresponding lifecycle and spatial contracts.
-6. **Owner smoke** — free-form building no longer reproduces the reported classes of failure and the interaction model is understandable without compensating around it.
-7. **Physical Quest evidence** — reach, comfort, target size and device-specific behavior survive real hardware.
-8. **Only then:** resume visual/feedback work.
+PR #2 remains draft and **DO NOT MERGE YET**.
 
-Automated desktop/IWER evidence is implementation evidence, not a substitute for human feel or physical ergonomics.
+Before R0 replaces the old `main` checkpoint, require a conscious evidence decision covering:
 
-Visual-feedback work is explicitly gated. When R0 reaches that point, the project status should announce it prominently rather than silently drifting into polish.
+- current Owner interaction judgement;
+- continued absence of the original world/wheel/creation failure classes;
+- deployment attribution for the runtime actually tested;
+- physical Quest reach/comfort/controller/device evidence when hardware becomes available, unless the Owner later explicitly reclassifies that merge requirement.
+
+The hardware gate is deferred, not silently satisfied and not a reason to stop useful work.
