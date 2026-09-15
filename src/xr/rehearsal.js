@@ -5,6 +5,8 @@ import { beamEndPosition } from '../input/structural-placement.js';
 const TRIGGER = 'trigger';
 const SQUEEZE = 'squeeze';
 const XR_FRAME_TIMEOUT_MS = 2500;
+const GRIP_POSE_TOLERANCE = 0.005;
+const GRIP_ROUND_TRIP_TOLERANCE = 0.01;
 
 function xrFrames(view, count = 2, label = 'xr-frames') {
   return new Promise((resolve, reject) => {
@@ -58,6 +60,52 @@ async function setPose(view, device, controller, position, target = null, label 
   await xrFrames(view, 3, `${label}: settle`);
 }
 
+async function readGripWorld(view, handedness = 'right', label = 'grip-pose') {
+  const session = view.renderer.xr.getSession();
+  const referenceSpace = view.renderer.xr.getReferenceSpace();
+  if (!session || !referenceSpace) throw new Error(`${label}: XR session/reference space unavailable`);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`${label}: timed out waiting for XR grip pose`));
+    }, XR_FRAME_TIMEOUT_MS);
+
+    session.requestAnimationFrame((_time, frame) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      const inputSource = Array.from(session.inputSources).find((source) => source.handedness === handedness);
+      if (!inputSource?.gripSpace) {
+        reject(new Error(`${label}: ${handedness} controller gripSpace unavailable`));
+        return;
+      }
+      const pose = frame.getPose(inputSource.gripSpace, referenceSpace);
+      if (!pose) {
+        reject(new Error(`${label}: ${handedness} controller grip pose unavailable`));
+        return;
+      }
+      const { x, y, z } = pose.transform.position;
+      resolve(new THREE.Vector3(x, y, z));
+    });
+  });
+}
+
+async function setGripPose(view, device, controller, desiredWorld, label = 'set-grip-pose') {
+  await setPose(view, device, controller, desiredWorld, null, `${label}: target-ray-seed`);
+  const firstGrip = await readGripWorld(view, 'right', `${label}: first-grip`);
+  controller.position.add(desiredWorld.clone().sub(firstGrip));
+  device.notifyStateChange();
+  await xrFrames(view, 3, `${label}: corrected-settle`);
+  const settledGrip = await readGripWorld(view, 'right', `${label}: settled-grip`);
+  const error = settledGrip.distanceTo(desiredWorld);
+  requireState(error <= GRIP_POSE_TOLERANCE,
+    `${label}: IWER grip calibration missed desired world pose by ${error.toFixed(4)} m`);
+  return settledGrip;
+}
+
 async function pulse(view, device, controller, button, label = button) {
   controller.updateButtonValue(button, 1);
   device.notifyStateChange();
@@ -68,16 +116,17 @@ async function pulse(view, device, controller, button, label = button) {
 }
 
 async function dragGrip(view, device, controller, from, to, label = 'grip-drag') {
-  await setPose(view, device, controller, from, null, `${label}: start-pose`);
+  await setGripPose(view, device, controller, from, `${label}: start-pose`);
   controller.updateButtonValue(SQUEEZE, 1);
   device.notifyStateChange();
   await xrFrames(view, 4, `${label}: grip-press`);
-  controller.position.copy(to);
-  device.notifyStateChange();
-  await xrFrames(view, 6, `${label}: move`);
+  const startGripWorld = await readGripWorld(view, 'right', `${label}: pressed-grip`);
+  await setGripPose(view, device, controller, to, `${label}: move-pose`);
   controller.updateButtonValue(SQUEEZE, 0);
   device.notifyStateChange();
   await xrFrames(view, 4, `${label}: grip-release`);
+  const endGripWorld = await readGripWorld(view, 'right', `${label}: released-grip`);
+  return { startGripWorld, endGripWorld };
 }
 
 export function installIwerRehearsal({
@@ -159,12 +208,25 @@ export function installIwerRehearsal({
 
       const firstStart = machineToWorld([-0.36, 0, 0]);
       const firstEnd = machineToWorld([0.36, 0, 0]);
-      await dragGrip(view, device, controller, firstStart, firstEnd, 'first-beam-create');
+      const firstDrag = await dragGrip(view, device, controller, firstStart, firstEnd, 'first-beam-create');
       requireState(getDocument().beams.length === 1, 'blank-space grip drag did not author the first beam');
       requireState(getDocument().nodes.length === 2, 'first beam should own exactly two internal endpoints');
-      requireState(getDocument().nodes.every((node) => Math.abs(node.position[1]) < 1e-6),
+      requireState(getDocument().nodes.every((node) => Math.abs(node.position[1]) <= GRIP_POSE_TOLERANCE),
         'XR workbench presentation height leaked into authored machine-local Y');
       const seed = getDocument().beams[0];
+      const authoredStart = machineToWorld(beamEndPosition(getDocument(), seed.id, 'a'));
+      const authoredEnd = machineToWorld(beamEndPosition(getDocument(), seed.id, 'b'));
+      const forwardError = Math.max(
+        authoredStart.distanceTo(firstDrag.startGripWorld),
+        authoredEnd.distanceTo(firstDrag.endGripWorld),
+      );
+      const reverseError = Math.max(
+        authoredStart.distanceTo(firstDrag.endGripWorld),
+        authoredEnd.distanceTo(firstDrag.startGripWorld),
+      );
+      const gripRoundTripError = Math.min(forwardError, reverseError);
+      requireState(gripRoundTripError <= GRIP_ROUND_TRIP_TOLERANCE,
+        `XR grip-space → machine → world round-trip drifted by ${gripRoundTripError.toFixed(4)} m`);
       mark('machine-local-authority');
       mark('beam-create');
 
@@ -214,7 +276,7 @@ export function installIwerRehearsal({
         (seedAfterEditA[2] + seedAfterEditB[2]) * 0.5 + 0.1,
       ];
       const wheelProbe = machineToWorld(wheelProbeMachine);
-      await setPose(view, device, controller, wheelProbe, null, 'wheel-probe');
+      await setGripPose(view, device, controller, wheelProbe, 'wheel-probe');
       await xrFrames(view, 4, 'wheel-preview');
       requireState(componentLayer.hasPreview(), 'beam-surface proximity did not produce wheel preview');
       mark('surface-mount-preview');
@@ -226,7 +288,7 @@ export function installIwerRehearsal({
 
       const wheelWorld = componentLayer.getWorldPosition(wheelId, new THREE.Vector3());
       requireState(wheelWorld, 'placed wheel interaction proxy missing');
-      await setPose(view, device, controller, wheelWorld, null, 'wheel-existing-probe');
+      await setGripPose(view, device, controller, wheelWorld, 'wheel-existing-probe');
       await pulse(view, device, controller, SQUEEZE, 'wheel-existing-select');
       requireState(getSelectedComponentId() === wheelId, 'direct squeeze did not select existing wheel');
       mark('direct-component-select');
@@ -269,7 +331,7 @@ export function installIwerRehearsal({
 
       const authoredBeforeWorkspaceMove = machineFingerprint(getDocument());
       const handleWorld = xrConstruction.getWorkspaceHandleWorldPosition(new THREE.Vector3());
-      await setPose(view, device, controller, handleWorld, null, 'workspace-handle-pose');
+      await setGripPose(view, device, controller, handleWorld, 'workspace-handle-pose');
       controller.updateButtonValue(SQUEEZE, 1);
       device.notifyStateChange();
       await xrFrames(view, 3, 'workspace-grab: press');
