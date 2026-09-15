@@ -383,6 +383,7 @@ export class RiftworksScene {
       beamId: hit.object.userData.beamId,
       localPosition,
       localNormal: [normal.x, normal.y, normal.z],
+      distance: hit.distance,
     };
   }
 
