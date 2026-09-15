@@ -1,11 +1,13 @@
 import './style.css';
 import {
   attachPoweredWheel,
-  createSeedMachine,
+  createBeam,
+  createEmptyMachine,
   editPoweredWheel,
   extendFromBeamEnd,
   machineFingerprint,
   moveBeamEnd,
+  removeBeam,
   removeComponent,
 } from './core/machine-document.js';
 import { createPoweredCartMachine } from './core/specimens.js';
@@ -66,7 +68,7 @@ app.innerHTML = `
       <details class="diagnostics">
         <summary>Build / debug controls</summary>
         <div class="controls compact-controls">
-          <button id="resetButton" disabled>RESET BUILD</button>
+          <button id="resetButton" disabled>CLEAR WORKSHOP</button>
           <button id="gridButton" class="active" disabled>GRID 25 cm</button>
         </div>
         <div class="metrics">
@@ -75,8 +77,8 @@ app.innerHTML = `
           <span>wheels <b id="wheelCount">–</b></span>
           <span>islands <b id="islandCount">–</b></span>
         </div>
-        <p class="hint"><b>Desktop:</b> click a beam → white end handle reshapes it · green end handle extends it · RMB orbit · Space RUN/STOP.</p>
-        <p class="hint"><b>XR/IWER:</b> trigger selects real parts/spatial controls; grip manipulates selected beam ends, mounts wheels, or moves the workspace.</p>
+        <p class="hint"><b>Desktop:</b> drag empty workspace → create beam · click beam → white end reshapes, green end extends · Delete removes selected beam · RMB orbit · Space RUN/STOP.</p>
+        <p class="hint"><b>XR/IWER:</b> trigger selects parts/spatial controls; grip creates/manipulates structural parts, mounts wheels, or moves the BUILD workspace.</p>
       </details>
       <div id="xrMount" class="xr-mount"></div>
     </aside>
@@ -115,7 +117,7 @@ const componentLayer = new ComponentInteractionLayer(view);
 const structuralLayer = new StructuralInteractionLayer(view);
 const runtime = await RapierMachineRuntime.create();
 
-let documentState = createSeedMachine();
+let documentState = createEmptyMachine();
 let mode = 'build';
 let tool = 'beam';
 let history = [];
@@ -149,6 +151,7 @@ function syncStructuralLayer() {
 function updateUi(message = null) {
   const plan = mode === 'build' ? compileMachine(documentState) : activePlan;
   const selected = selectedWheel();
+  const hasStructure = documentState.beams.length > 0;
   nodeCount.textContent = String(documentState.nodes.length);
   beamCount.textContent = String(documentState.beams.length);
   wheelCount.textContent = String(documentState.components.filter((component) => component.kind === 'powered-wheel').length);
@@ -156,11 +159,12 @@ function updateUi(message = null) {
   modeBadge.textContent = mode === 'build' ? 'BUILD' : 'RUN';
   modeBadge.classList.toggle('running', mode === 'run');
   runButton.textContent = mode === 'build' ? 'RUN' : 'STOP';
+  runButton.disabled = mode === 'build' && !hasStructure;
   undoButton.disabled = mode !== 'build' || history.length === 0;
-  resetButton.disabled = mode !== 'build';
+  resetButton.disabled = mode !== 'build' || (!hasStructure && documentState.components.length === 0);
   gridButton.disabled = mode !== 'build';
   beamToolButton.disabled = mode !== 'build';
-  wheelToolButton.disabled = mode !== 'build';
+  wheelToolButton.disabled = mode !== 'build' || !hasStructure;
   cartButton.disabled = mode !== 'build';
   focusButton.disabled = mode !== 'run';
   followButton.disabled = false;
@@ -183,23 +187,28 @@ function updateUi(message = null) {
       ? `Editing ${selected.id} · authored component truth`
       : selectedBeamId
         ? `Selected ${selectedBeamId} · structural part`
-        : `Machine-local authored truth · ${tool === 'beam' ? 'Beam' : 'Powered Wheel'}`
+        : hasStructure
+          ? `Machine-local authored truth · ${tool === 'beam' ? 'Beam' : 'Powered Wheel'}`
+          : 'Blank authored workshop · no hidden starter geometry'
     : 'Simulation-world Rapier runtime · authored state untouched';
 
   detailLine.textContent = message ?? (mode === 'build'
     ? selected
       ? 'Edit the wheel mount in place. Mirror it across the host, reverse the motor, delete, or finish.'
       : selectedBeamId && tool === 'beam'
-        ? 'White handle reshapes this beam end. Green handle pulls a new beam from this part. Internal joints stay hidden topology.'
+        ? 'White handle reshapes this beam end. Green handle pulls a new beam from this part. Delete removes the selected part.'
         : tool === 'beam'
-          ? 'Select a real beam first. Its contextual part handles appear only while that beam is selected.'
+          ? hasStructure
+            ? 'Drag on empty workspace to create another independent part, or select an existing beam to revise it.'
+            : 'Drag directly on the empty workspace to create the first structural part.'
           : 'Hover or approach a real beam face to preview the exact host-relative wheel mount before commit.'
-    : 'RUN uses one explicit machine-local → simulation-world spawn. Desktop follow never drives the XR head.');
+    : 'RUN uses one explicit machine-local → simulation-world spawn. Authoring workspace has no runtime authority.');
 
   view.updateSpatialControls({
     tool,
     mode,
     canUndo: mode === 'build' && history.length > 0,
+    canRun: hasStructure,
     selectedComponentId: selected?.id ?? null,
     selectedBeamId,
   });
@@ -234,6 +243,25 @@ function commitDocument(next, message, {
   return true;
 }
 
+function commitCreateBeam(startPosition, endPosition, startTargetBeamEnd = null, endTargetBeamEnd = null) {
+  const beforeIds = new Set(documentState.beams.map((beam) => beam.id));
+  const next = createBeam(documentState, startPosition, endPosition, {
+    startTargetBeamEnd,
+    endTargetBeamEnd,
+  });
+  if (next === documentState) {
+    updateUi('Beam creation produced no valid structural part.');
+    return;
+  }
+  const created = next.beams.find((beam) => !beforeIds.has(beam.id)) ?? null;
+  selectedBeamId = created?.id ?? null;
+  commitDocument(next, created
+    ? `Created ${created.id}${startTargetBeamEnd || endTargetBeamEnd ? ' with welded endpoint topology' : ' from blank workspace'}.`
+    : 'Created structural part.', {
+    preserveBeamSelection: Boolean(created),
+  });
+}
+
 function commitMoveBeamEnd(beamId, end, position) {
   const next = moveBeamEnd(documentState, beamId, end, position);
   if (next === documentState) {
@@ -258,6 +286,21 @@ function commitExtendBeamEnd(beamId, end, position, targetBeamEnd = null) {
     : `Pulled a new structural beam from ${beamId}.`, {
     preserveBeamSelection: true,
   });
+}
+
+function deleteSelectedBeam() {
+  if (!selectedBeamId || mode !== 'build') return;
+  const id = selectedBeamId;
+  selectedBeamId = null;
+  commitDocument(removeBeam(documentState, id), `Deleted ${id} and any components hosted by that part. Orphan topology was cleaned automatically.`);
+}
+
+function editSelectedBeam(action) {
+  if (action === 'beam-done') {
+    clearBeamSelection();
+    return;
+  }
+  if (action === 'beam-delete') deleteSelectedBeam();
 }
 
 function candidateIsDuplicate(candidate) {
@@ -309,7 +352,7 @@ function selectBeam(beamId) {
   clearPoweredWheelPreview();
   selectedBeamId = beamId;
   syncStructuralLayer();
-  updateUi(`Selected ${beamId}. Manipulate the part through its contextual end handles.`);
+  updateUi(`Selected ${beamId}. Manipulate the part directly or delete it.`);
 }
 
 function clearBeamSelection(message = null) {
@@ -389,6 +432,10 @@ function editSelectedWheel(action) {
 
 function selectTool(nextTool) {
   if (mode !== 'build') return;
+  if (nextTool === 'powered-wheel' && documentState.beams.length === 0) {
+    updateUi('Create a structural part before mounting a wheel.');
+    return;
+  }
   selectedComponentId = null;
   selectedBeamId = null;
   componentLayer.setSelected(null);
@@ -401,6 +448,10 @@ function selectTool(nextTool) {
 
 function startRun() {
   if (mode !== 'build') return;
+  if (documentState.beams.length === 0) {
+    updateUi('RUN needs at least one authored structural part. The empty workshop remains unchanged.');
+    return;
+  }
   selectedComponentId = null;
   selectedBeamId = null;
   componentLayer.setSelected(null);
@@ -470,13 +521,15 @@ followButton.addEventListener('click', () => {
 });
 resetButton.addEventListener('click', () => {
   if (mode !== 'build') return;
+  const blank = createEmptyMachine();
+  if (documentState.beams.length === 0 && documentState.components.length === 0) return;
   history.push(documentState);
-  documentState = createSeedMachine();
+  documentState = blank;
   selectedComponentId = null;
   selectedBeamId = null;
   clearPoweredWheelPreview();
   renderAuthored();
-  updateUi('Reset to the machine-local seed structure.');
+  updateUi('Workshop cleared to genuine blank authored state.');
 });
 gridButton.addEventListener('click', () => {
   gridEnabled = !gridEnabled;
@@ -495,6 +548,10 @@ window.addEventListener('keydown', (event) => {
     if (selectedComponentId) clearComponentSelection();
     else clearBeamSelection();
   }
+  if (!event.repeat && (event.code === 'Delete' || event.code === 'Backspace') && mode === 'build') {
+    if (selectedComponentId) editSelectedWheel('wheel-delete');
+    else if (selectedBeamId) deleteSelectedBeam();
+  }
   if (!event.repeat && event.code === 'KeyF' && mode === 'run') view.focusRuntimeNow();
   if (!event.repeat && event.code === 'Digit1') selectTool('beam');
   if (!event.repeat && event.code === 'Digit2') selectTool('powered-wheel');
@@ -508,7 +565,7 @@ attachDesktopBuilder({
   getGridEnabled: () => gridEnabled,
   getTool: () => tool,
   selectBeam,
-  clearBeamSelection,
+  commitCreateBeam,
   commitMoveBeamEnd,
   commitExtendBeamEnd,
 });
@@ -536,6 +593,7 @@ const xrConstruction = setupXrConstruction({
   getTool: () => tool,
   getSelectedComponentId: () => selectedComponentId,
   getSelectedBeamId: () => selectedBeamId,
+  commitCreateBeam,
   commitMoveBeamEnd,
   commitExtendBeamEnd,
   commitPoweredWheel,
@@ -544,6 +602,7 @@ const xrConstruction = setupXrConstruction({
   selectBeam,
   clearBeamSelection,
   selectComponent,
+  editSelectedBeam,
   editSelectedWheel,
   selectTool,
   toggleRun,
@@ -557,15 +616,14 @@ xrBadge.textContent = emulation.mode === 'iwer'
     ? 'XR: native immersive'
     : 'XR: browser preview';
 
-runButton.disabled = false;
 resetButton.disabled = false;
 gridButton.disabled = false;
 focusButton.disabled = true;
 followButton.disabled = false;
 beamToolButton.disabled = false;
-wheelToolButton.disabled = false;
+wheelToolButton.disabled = true;
 cartButton.disabled = false;
-updateUi('R0 foundation reset: part-first beam editing and beam-mounted wheels are active on this candidate.');
+updateUi('R0 foundation reset: blank workshop and part-first authoring are active on this candidate.');
 
 const rehearsal = installIwerRehearsal({
   emulation,
