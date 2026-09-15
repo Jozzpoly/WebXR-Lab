@@ -31,7 +31,9 @@ export function createPoweredCartMachine() {
       width: 0.11,
       mountGap: 0.015,
       density: 520,
-      motorVelocity: 8,
+      // Mirrored outward axle vectors require mirrored signed motor speeds
+      // to express one coherent machine-space drive direction.
+      motorVelocity: 8 * localSide,
       motorDamping: 2.4,
     });
   };
