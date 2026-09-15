@@ -110,6 +110,7 @@ export class RiftworksScene {
     this.runtimeGroup.visible = false;
 
     this.nodeMeshes = new Map();
+    this.beamMeshes = new Map();
     this.runtimeRoots = new Map();
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
@@ -253,14 +254,20 @@ export class RiftworksScene {
   renderAuthored(document, plan) {
     this.authoredGroup.clear();
     this.nodeMeshes.clear();
-    const nodes = new Map(document.nodes.map((node) => [node.id, node]));
+    this.beamMeshes.clear();
 
-    for (const beam of document.beams) {
-      const mesh = new THREE.Mesh(beamGeometry, authoredBeamMaterial);
-      fitBeam(mesh, nodes.get(beam.a).position, nodes.get(beam.b).position, beam.thickness);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.authoredGroup.add(mesh);
+    for (const island of plan.islands) {
+      for (const beam of island.beams) {
+        const mesh = new THREE.Mesh(beamGeometry, authoredBeamMaterial);
+        mesh.position.set(...beam.machinePosition);
+        mesh.quaternion.set(...beam.machineRotation);
+        mesh.scale.set(beam.length, beam.thickness, beam.thickness);
+        mesh.userData.beamId = beam.id;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.beamMeshes.set(beam.id, mesh);
+        this.authoredGroup.add(mesh);
+      }
     }
 
     for (const component of plan.components ?? []) {
@@ -382,6 +389,37 @@ export class RiftworksScene {
     this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
+  }
+
+  #beamSurfaceFromHit(hit) {
+    if (!hit?.object?.userData?.beamId || !hit.face) return null;
+    const geometryLocal = hit.object.worldToLocal(hit.point.clone());
+    const localPosition = [
+      geometryLocal.x * hit.object.scale.x,
+      geometryLocal.y * hit.object.scale.y,
+      geometryLocal.z * hit.object.scale.z,
+    ];
+    const normal = hit.face.normal.clone().normalize();
+    return {
+      beamId: hit.object.userData.beamId,
+      localPosition,
+      localNormal: [normal.x, normal.y, normal.z],
+    };
+  }
+
+  pickBeamSurface(clientX, clientY) {
+    this.#setPointer(clientX, clientY);
+    const hit = this.raycaster.intersectObjects([...this.beamMeshes.values()], false)[0];
+    return this.#beamSurfaceFromHit(hit);
+  }
+
+  pickBeamSurfaceController(controller) {
+    controller.updateWorldMatrix(true, false);
+    const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+    const direction = new THREE.Vector3(0, 0, -1).transformDirection(controller.matrixWorld);
+    this.raycaster.set(origin, direction);
+    const hit = this.raycaster.intersectObjects([...this.beamMeshes.values()], false)[0];
+    return this.#beamSurfaceFromHit(hit);
   }
 
   pickNode(clientX, clientY) {
