@@ -39,7 +39,7 @@ function makeButton(y) {
   labelMesh.position.z = BUTTON_D * 0.5 + 0.002;
   group.add(labelMesh);
 
-  return { group, hit, labelMesh, action: null, label: null };
+  return { group, hit, labelMesh, action: null, label: null, disabled: false };
 }
 
 export class SpatialToolPanel {
@@ -69,15 +69,15 @@ export class SpatialToolPanel {
     });
 
     this.hovered = null;
-    this.setState({ tool: 'beam', mode: 'build', canUndo: false, selectedComponentId: null });
+    this.setState({ tool: 'beam', mode: 'build', canUndo: false, canRun: false, selectedComponentId: null, selectedBeamId: null });
   }
 
   getHitTargets() {
-    return this.slots.map((slot) => slot.hit);
+    return this.slots.filter((slot) => !slot.disabled).map((slot) => slot.hit);
   }
 
   getActionWorldPosition(action, target = new THREE.Vector3()) {
-    const slot = this.slots.find((candidate) => candidate.action === action);
+    const slot = this.slots.find((candidate) => candidate.action === action && !candidate.disabled);
     if (!slot) return null;
     slot.hit.updateWorldMatrix(true, false);
     return target.setFromMatrixPosition(slot.hit.matrixWorld);
@@ -88,29 +88,46 @@ export class SpatialToolPanel {
     this.#refreshMaterials();
   }
 
-  setState({ tool, mode, canUndo, selectedComponentId = null }) {
+  setState({ tool, mode, canUndo, canRun = true, selectedComponentId = null, selectedBeamId = null }) {
     this.tool = tool;
     this.mode = mode;
     this.canUndo = canUndo;
+    this.canRun = canRun;
     this.selectedComponentId = selectedComponentId;
+    this.selectedBeamId = selectedBeamId;
 
-    const editMode = mode === 'build' && Boolean(selectedComponentId);
-    const definitions = editMode
-      ? [
-          ['wheel-flip', 'MIRROR'],
-          ['wheel-reverse', 'REVERSE'],
-          ['wheel-delete', 'DELETE'],
-          ['wheel-done', 'DONE'],
-        ]
-      : [
-          ['beam', 'BEAM'],
-          ['powered-wheel', 'WHEEL'],
-          ['run-toggle', mode === 'run' ? 'STOP' : 'RUN'],
-          ['undo', 'UNDO'],
-        ];
+    const wheelEditMode = mode === 'build' && Boolean(selectedComponentId);
+    const beamEditMode = mode === 'build' && !selectedComponentId && Boolean(selectedBeamId);
+    let definitions;
+    if (wheelEditMode) {
+      definitions = [
+        ['wheel-flip', 'MIRROR'],
+        ['wheel-reverse', 'REVERSE'],
+        ['wheel-delete', 'DELETE'],
+        ['wheel-done', 'DONE'],
+      ];
+    } else if (beamEditMode) {
+      definitions = [
+        ['beam-delete', 'DELETE'],
+        ['beam-done', 'DONE'],
+        ['run-toggle', 'RUN'],
+        ['undo', 'UNDO'],
+      ];
+    } else {
+      definitions = [
+        ['beam', 'BEAM'],
+        ['powered-wheel', 'WHEEL'],
+        ['run-toggle', mode === 'run' ? 'STOP' : 'RUN'],
+        ['undo', 'UNDO'],
+      ];
+    }
 
     definitions.forEach(([slotAction, label], index) => this.#setSlot(this.slots[index], slotAction, label));
-    this.#setTitle(editMode ? `WHEEL ${selectedComponentId}` : 'RIFTWORKS');
+    this.#setTitle(wheelEditMode
+      ? `WHEEL ${selectedComponentId}`
+      : beamEditMode
+        ? `BEAM ${selectedBeamId}`
+        : 'RIFTWORKS');
     this.#refreshMaterials();
   }
 
@@ -124,7 +141,11 @@ export class SpatialToolPanel {
 
   #setSlot(slot, action, label) {
     slot.action = action;
+    slot.disabled = (action === 'undo' && !this.canUndo) ||
+      (action === 'run-toggle' && this.mode === 'build' && !this.canRun) ||
+      (action === 'powered-wheel' && this.mode === 'build' && !this.canRun);
     slot.hit.userData.spatialAction = action;
+    slot.hit.userData.spatialDisabled = slot.disabled;
     if (slot.label === label) return;
     slot.label = label;
     slot.labelMesh.material.map.dispose();
@@ -136,14 +157,13 @@ export class SpatialToolPanel {
     for (const slot of this.slots) {
       const action = slot.action;
       const activeTool = action === this.tool;
-      const hovered = action === this.hovered;
-      const disabled = action === 'undo' && !this.canUndo;
+      const hovered = !slot.disabled && action === this.hovered;
       let color = 0x183040;
-      if (disabled) color = 0x11171b;
-      else if (action === 'wheel-delete') color = hovered ? 0x8f3f35 : 0x5b2a28;
+      if (slot.disabled) color = 0x11171b;
+      else if (action === 'wheel-delete' || action === 'beam-delete') color = hovered ? 0x8f3f35 : 0x5b2a28;
       else if (activeTool) color = 0x176d86;
       else if (action === 'run-toggle' && this.mode === 'run') color = 0x8a3e24;
-      else if (action === 'wheel-done') color = hovered ? 0x26715f : 0x1d594d;
+      else if (action === 'wheel-done' || action === 'beam-done') color = hovered ? 0x26715f : 0x1d594d;
       else if (hovered) color = 0x245f72;
       slot.hit.material.color.setHex(color);
       slot.hit.material.emissive.setHex(activeTool || hovered ? 0x0b2630 : 0x000000);
