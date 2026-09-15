@@ -84,7 +84,9 @@ Use the strongest appropriate layer rather than waiting for hardware:
 
 IWER may deliberately place controllers at ideal poses; that makes it strong event/transform evidence and weak ergonomics evidence. Never describe deterministic browser choreography as proof that interaction feels good to a human.
 
-GitHub Verify and Cloudflare deployment are separate gates. A GREEN GitHub branch does not prove that a previously established Cloudflare preview currently serves that branch head.
+Latest runtime/evidence-bearing checkpoint is `402527936d870ed3b3fa3b7b3c2e31872d655f68`, verified by `Verify Riftworks` #207 with 73/73 Node tests, desktop 8/8, IWER 18/18 and public-preview attribution PASS for runtime `f132c978549f`. Later branch commits may be documentation-only and therefore do not change that runtime fingerprint; use live Git/PR metadata for the exact current docs head.
+
+GitHub Verify and Cloudflare deployment are separate gates. A GREEN GitHub branch does not prove that a previously established Cloudflare preview currently serves that branch head/runtime unless attribution has also been observed.
 
 When useful, expose the exact same authored specimen used by headless tests on the Owner surface. This separates simulation failure from browser/presentation/interaction failure.
 
