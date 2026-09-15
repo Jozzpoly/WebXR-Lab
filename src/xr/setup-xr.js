@@ -23,6 +23,7 @@ export function setupXrConstruction({
   getTool,
   getSelectedComponentId,
   getSelectedBeamId,
+  commitCreateBeam,
   commitMoveBeamEnd,
   commitExtendBeamEnd,
   commitPoweredWheel,
@@ -31,6 +32,7 @@ export function setupXrConstruction({
   selectBeam,
   clearBeamSelection,
   selectComponent,
+  editSelectedBeam,
   editSelectedWheel,
   selectTool,
   toggleRun,
@@ -103,12 +105,26 @@ export function setupXrConstruction({
     view.worldToWorkspacePoint(hand.worldPoint, hand.localPoint);
 
     const doc = getDocument();
+    hand.state.targetBeamEnd = null;
+    let end = hand.localPoint.toArray();
+
+    if (drag.kind === 'create') {
+      const target = nearestBeamEnd(doc, end, 0.18, drag.startTargetBeamEnd);
+      if (target) {
+        hand.state.targetBeamEnd = { beamId: target.beamId, end: target.end };
+        end = target.position;
+      }
+      const start = drag.startPoint;
+      const length = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]);
+      hand.state.lastPoint = [...end];
+      view.showGhost(start, end, length >= MIN_BEAM_LENGTH);
+      return;
+    }
+
     const start = beamEndPosition(doc, drag.beamId, drag.end);
     const opposite = beamEndPosition(doc, drag.beamId, drag.end === 'a' ? 'b' : 'a');
     if (!start || !opposite) return;
 
-    hand.state.targetBeamEnd = null;
-    let end = hand.localPoint.toArray();
     if (drag.kind === 'extend') {
       const target = nearestBeamEnd(doc, end, 0.18, { beamId: drag.beamId, end: drag.end });
       if (target) {
@@ -162,6 +178,7 @@ export function setupXrConstruction({
         else if (action === 'run-toggle') toggleRun();
         else if (action === 'undo') undo();
         else if (action.startsWith('wheel-')) editSelectedWheel(action);
+        else if (action.startsWith('beam-')) editSelectedBeam(action);
         return;
       }
 
@@ -223,8 +240,35 @@ export function setupXrConstruction({
         return;
       }
 
+      const endpoint = nearestBeamEnd(getDocument(), localPoint.toArray(), 0.12);
+      if (endpoint) {
+        state.structuralDrag = {
+          kind: 'create',
+          startPoint: [...endpoint.position],
+          startTargetBeamEnd: { beamId: endpoint.beamId, end: endpoint.end },
+        };
+        state.lastPoint = [...endpoint.position];
+        state.targetBeamEnd = null;
+        clearPoweredWheelPreview();
+        updateStructuralDrag({ grip, state, worldPoint, localPoint });
+        return;
+      }
+
       const nearSurface = nearestBeamSurface(getDocument(), localPoint.toArray(), 0.18);
-      if (nearSurface?.beamId) selectBeam(nearSurface.beamId);
+      if (nearSurface?.beamId) {
+        selectBeam(nearSurface.beamId);
+        return;
+      }
+
+      state.structuralDrag = {
+        kind: 'create',
+        startPoint: localPoint.toArray(),
+        startTargetBeamEnd: null,
+      };
+      state.lastPoint = localPoint.toArray();
+      state.targetBeamEnd = null;
+      clearPoweredWheelPreview();
+      updateStructuralDrag({ grip, state, worldPoint, localPoint });
     });
 
     controller.addEventListener('squeezeend', () => {
@@ -238,7 +282,9 @@ export function setupXrConstruction({
       const drag = state.structuralDrag;
       const point = state.lastPoint;
       if (point) {
-        if (drag.kind === 'move') {
+        if (drag.kind === 'create') {
+          commitCreateBeam(drag.startPoint, point, drag.startTargetBeamEnd, state.targetBeamEnd);
+        } else if (drag.kind === 'move') {
           commitMoveBeamEnd(drag.beamId, drag.end, point);
         } else {
           commitExtendBeamEnd(drag.beamId, drag.end, point, state.targetBeamEnd);
