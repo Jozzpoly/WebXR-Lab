@@ -1,10 +1,14 @@
-export const MACHINE_VERSION = 1;
+export const MACHINE_VERSION = 2;
 export const MIN_BEAM_LENGTH = 0.08;
 
 const clone = (value) => structuredClone(value);
 const finiteVec3 = (value) => Array.isArray(value) && value.length === 3 && value.every(Number.isFinite);
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const vectorLength = (v) => Math.hypot(...v);
+const normalizeVec3 = (v) => {
+  const len = vectorLength(v);
+  return v.map((value) => value / len);
+};
 
 export function createSeedMachine() {
   return {
@@ -16,7 +20,7 @@ export function createSeedMachine() {
       { id: 'n2', position: [0.4, 0.45, 0] },
     ],
     beams: [
-      { id: 'b1', a: 'n1', b: 'n2', thickness: 0.12, density: 420 },
+      { id: 'b1', a: 'n1', b: 'n2', roll: 0, thickness: 0.12, density: 420 },
     ],
     components: [],
   };
@@ -38,12 +42,11 @@ export function validateMachine(document) {
     nodes.set(node.id, node);
   }
 
-  const beamIds = new Set();
+  const beams = new Map();
   const connections = new Set();
-  const structuralNodes = new Set();
   for (const beam of document.beams) {
-    if (!beam?.id || beamIds.has(beam.id)) errors.push(`duplicate or missing beam id: ${beam?.id}`);
-    beamIds.add(beam?.id);
+    if (!beam?.id || beams.has(beam.id)) errors.push(`duplicate or missing beam id: ${beam?.id}`);
+    beams.set(beam?.id, beam);
     const aNode = nodes.get(beam?.a);
     const bNode = nodes.get(beam?.b);
     if (!aNode || !bNode) errors.push(`beam ${beam?.id ?? '?'} references a missing node`);
@@ -51,15 +54,12 @@ export function validateMachine(document) {
     if (aNode && bNode && finiteVec3(aNode.position) && finiteVec3(bNode.position) && distance(aNode.position, bNode.position) < MIN_BEAM_LENGTH) {
       errors.push(`beam ${beam?.id ?? '?'} is shorter than ${MIN_BEAM_LENGTH} m`);
     }
+    if (!Number.isFinite(beam?.roll)) errors.push(`beam ${beam?.id ?? '?'} has invalid roll`);
     if (!(Number.isFinite(beam?.thickness) && beam.thickness > 0)) errors.push(`beam ${beam?.id ?? '?'} has invalid thickness`);
     if (!(Number.isFinite(beam?.density) && beam.density > 0)) errors.push(`beam ${beam?.id ?? '?'} has invalid density`);
     const key = [beam?.a, beam?.b].sort().join('|');
     if (connections.has(key)) errors.push(`duplicate structural connection: ${key}`);
     connections.add(key);
-    if (aNode && bNode) {
-      structuralNodes.add(beam.a);
-      structuralNodes.add(beam.b);
-    }
   }
 
   const componentIds = new Set();
@@ -70,13 +70,12 @@ export function validateMachine(document) {
       errors.push(`component ${component?.id ?? '?'} has unsupported kind: ${component?.kind}`);
       continue;
     }
-    if (!nodes.has(component.nodeId)) errors.push(`powered wheel ${component.id} references a missing node`);
-    else if (!structuralNodes.has(component.nodeId)) errors.push(`powered wheel ${component.id} must attach to a structural node`);
-    if (!finiteVec3(component.axis) || vectorLength(component.axis) < 1e-6) errors.push(`powered wheel ${component.id} has an invalid axis`);
-    if (component.side !== -1 && component.side !== 1) errors.push(`powered wheel ${component.id} has invalid side`);
+    if (!beams.has(component.hostBeamId)) errors.push(`powered wheel ${component.id} references a missing host beam`);
+    if (!finiteVec3(component?.mount?.position)) errors.push(`powered wheel ${component.id} has an invalid mount position`);
+    if (!finiteVec3(component?.mount?.axis) || vectorLength(component.mount.axis) < 1e-6) errors.push(`powered wheel ${component.id} has an invalid mount axis`);
     if (!(Number.isFinite(component.radius) && component.radius > 0.04)) errors.push(`powered wheel ${component.id} has invalid radius`);
     if (!(Number.isFinite(component.width) && component.width > 0.02)) errors.push(`powered wheel ${component.id} has invalid width`);
-    if (!(Number.isFinite(component.mountOffset) && component.mountOffset >= 0)) errors.push(`powered wheel ${component.id} has invalid mount offset`);
+    if (!(Number.isFinite(component.mountGap) && component.mountGap >= 0)) errors.push(`powered wheel ${component.id} has invalid mount gap`);
     if (!(Number.isFinite(component.density) && component.density > 0)) errors.push(`powered wheel ${component.id} has invalid density`);
     if (!Number.isFinite(component.motorVelocity)) errors.push(`powered wheel ${component.id} has invalid motor velocity`);
     if (!(Number.isFinite(component.motorDamping) && component.motorDamping >= 0)) errors.push(`powered wheel ${component.id} has invalid motor damping`);
@@ -126,6 +125,7 @@ export function extendFromNode(document, startNodeId, endPosition, targetNodeId 
     id: `b${next.nextIds.beam++}`,
     a: startNodeId,
     b: endNode.id,
+    roll: 0,
     thickness: 0.12,
     density: 420,
   });
@@ -133,26 +133,26 @@ export function extendFromNode(document, startNodeId, endPosition, targetNodeId 
   return assertValidMachine(next);
 }
 
-export function attachPoweredWheel(document, nodeId, options = {}) {
+export function attachPoweredWheel(document, hostBeamId, options = {}) {
   assertValidMachine(document);
-  if (!document.nodes.some((node) => node.id === nodeId)) throw new Error(`unknown wheel node: ${nodeId}`);
-
-  const axis = options.axis ?? [0, 0, 1];
-  if (!finiteVec3(axis) || vectorLength(axis) < 1e-6) throw new Error('wheel axis must be a non-zero finite vec3');
-  const side = options.side ?? 1;
-  if (side !== -1 && side !== 1) throw new Error('wheel side must be -1 or 1');
+  if (!document.beams.some((beam) => beam.id === hostBeamId)) throw new Error(`unknown wheel host beam: ${hostBeamId}`);
+  const mount = options.mount;
+  if (!finiteVec3(mount?.position)) throw new Error('powered wheel mount requires a finite host-local position');
+  if (!finiteVec3(mount?.axis) || vectorLength(mount.axis) < 1e-6) throw new Error('powered wheel mount requires a non-zero host-local axis');
 
   const next = clone(document);
   const componentId = `c${next.nextIds.component++}`;
   next.components.push({
     id: componentId,
     kind: 'powered-wheel',
-    nodeId,
-    axis: [...axis],
-    side,
+    hostBeamId,
+    mount: {
+      position: [...mount.position],
+      axis: normalizeVec3(mount.axis),
+    },
     radius: options.radius ?? 0.26,
     width: options.width ?? 0.12,
-    mountOffset: options.mountOffset ?? 0.15,
+    mountGap: options.mountGap ?? 0.02,
     density: options.density ?? 650,
     motorVelocity: options.motorVelocity ?? 8,
     motorDamping: options.motorDamping ?? 1.2,
@@ -167,14 +167,20 @@ export function editPoweredWheel(document, componentId, patch = {}) {
   if (!current) throw new Error(`unknown component: ${componentId}`);
   if (current.kind !== 'powered-wheel') throw new Error(`component ${componentId} is not a powered wheel`);
 
-  const allowed = new Set(['axis', 'side', 'radius', 'width', 'mountOffset', 'density', 'motorVelocity', 'motorDamping']);
+  const allowed = new Set(['mount', 'radius', 'width', 'mountGap', 'density', 'motorVelocity', 'motorDamping']);
   const unknown = Object.keys(patch).filter((key) => !allowed.has(key));
   if (unknown.length) throw new Error(`unsupported powered-wheel edit field(s): ${unknown.join(', ')}`);
 
   const next = clone(document);
   const wheel = next.components.find((component) => component.id === componentId);
   for (const [key, value] of Object.entries(patch)) {
-    wheel[key] = key === 'axis' && Array.isArray(value) ? [...value] : value;
+    if (key === 'mount') {
+      if (!finiteVec3(value?.position)) throw new Error('powered wheel mount edit requires a finite host-local position');
+      if (!finiteVec3(value?.axis) || vectorLength(value.axis) < 1e-6) throw new Error('powered wheel mount edit requires a non-zero host-local axis');
+      wheel.mount = { position: [...value.position], axis: normalizeVec3(value.axis) };
+    } else {
+      wheel[key] = value;
+    }
   }
   next.revision += 1;
   return assertValidMachine(next);
