@@ -15,6 +15,7 @@ function seedRuntime(root) {
   write(root, 'src/main.js', 'export const answer = 1;\n');
   write(root, 'index.html', '<main id="app"></main>\n');
   write(root, 'package.json', '{"type":"module"}\n');
+  write(root, 'package-lock.json', '{"lockfileVersion":3,"packages":{}}\n');
   write(root, 'wrangler.jsonc', '{"assets":{"directory":"./dist"}}\n');
   write(root, 'vite.config.js', 'export default {};\n');
   write(root, 'scripts/runtime-build-id.mjs', '// fingerprint implementation\n');
@@ -40,6 +41,17 @@ test('runtime build id changes when executable source changes', () => {
 
   const first = computeRuntimeBuildId(root);
   write(root, 'src/main.js', 'export const answer = 2;\n');
+  const second = computeRuntimeBuildId(root);
+
+  assert.notEqual(second, first);
+});
+
+test('runtime build id changes when the resolved dependency graph changes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'riftworks-runtime-id-'));
+  seedRuntime(root);
+
+  const first = computeRuntimeBuildId(root);
+  write(root, 'package-lock.json', '{"lockfileVersion":3,"packages":{"node_modules/example":{"version":"2.0.0"}}}\n');
   const second = computeRuntimeBuildId(root);
 
   assert.notEqual(second, first);
