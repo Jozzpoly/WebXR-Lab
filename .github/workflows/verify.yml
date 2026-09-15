@@ -29,3 +29,21 @@ jobs:
         run: node scripts/desktop-browser-smoke.mjs
       - name: IWER browser rehearsal
         run: node scripts/iwer-browser-smoke.mjs
+      - name: Probe branch preview attribution
+        id: preview-attribution
+        if: github.event_name == 'pull_request' && github.head_ref == 'foundation-reset'
+        continue-on-error: true
+        env:
+          RIFTWORKS_PREVIEW_URL: https://foundation-reset-webxr-lab.jozzpoly.workers.dev
+          RIFTWORKS_PREVIEW_ATTEMPTS: 4
+          RIFTWORKS_PREVIEW_DELAY_MS: 15000
+        run: node scripts/verify-deployed-runtime.mjs
+      - name: Summarize branch preview attribution
+        if: always() && github.event_name == 'pull_request' && github.head_ref == 'foundation-reset'
+        run: |
+          echo '### Branch preview attribution' >> "$GITHUB_STEP_SUMMARY"
+          if [ '${{ steps.preview-attribution.outcome }}' = 'success' ]; then
+            echo '- **PASS**: public branch preview exposes the exact runtime fingerprint built by this run.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '- **UNPROVEN**: repo verification is unaffected, but the public branch preview did not expose the exact runtime fingerprint during this probe.' >> "$GITHUB_STEP_SUMMARY"
+          fi
