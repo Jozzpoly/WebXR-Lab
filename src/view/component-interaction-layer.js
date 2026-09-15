@@ -2,7 +2,6 @@ import * as THREE from 'three';
 
 const tireGeometry = new THREE.CylinderGeometry(1, 1, 1, 28, 1, false);
 const hubGeometry = new THREE.CylinderGeometry(1, 1, 1, 20, 1, false);
-const previewPickGeometry = new THREE.BoxGeometry(1, 1, 1);
 const previewMaterial = new THREE.MeshBasicMaterial({ color: 0x6ef0cf, transparent: true, opacity: 0.34, depthWrite: false });
 const previewHubMaterial = new THREE.MeshBasicMaterial({ color: 0xb8fff0, transparent: true, opacity: 0.52, depthWrite: false });
 const proxyMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
@@ -32,11 +31,6 @@ function createPreviewShape(component) {
   hub.scale.set(component.radius * 0.34, component.width * 1.18, component.radius * 0.34);
   hub.userData.wheelPreviewTarget = true;
   shape.add(hub);
-
-  const pickProxy = new THREE.Mesh(previewPickGeometry, proxyMaterial);
-  pickProxy.scale.set(component.radius * 1.9, component.width * 1.15, component.radius * 1.9);
-  pickProxy.userData.wheelPreviewTarget = true;
-  shape.add(pickProxy);
 
   const axis = new THREE.ArrowHelper(
     new THREE.Vector3(0, 1, 0),
