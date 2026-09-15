@@ -122,9 +122,11 @@ Tests and rehearsals should defend outcomes such as:
 
 ## Current verified checkpoint
 
-Current branch/evidence head:
+Latest runtime/evidence-bearing checkpoint:
 
 `402527936d870ed3b3fa3b7b3c2e31872d655f68`
+
+Later branch commits synchronize canonical documentation only. Documentation is intentionally excluded from the runtime fingerprint; use live Git/PR metadata for the exact latest docs-only branch head.
 
 GitHub `Verify Riftworks` run `34997954464` (#207):
 
