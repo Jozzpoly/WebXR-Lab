@@ -112,6 +112,14 @@ export function setupXrConstruction({
 
   const hands = [];
 
+  const clearAllDirectDrags = () => {
+    for (const hand of hands) {
+      if (hand.state.structuralDrag) clearStructuralDrag(hand.state);
+      if (hand.state.componentDrag) clearComponentDrag(hand.state);
+    }
+    clearPoweredWheelPreview();
+  };
+
   const updateStructuralDrag = (hand) => {
     const drag = hand.state.structuralDrag;
     if (!drag) return;
@@ -215,6 +223,7 @@ export function setupXrConstruction({
       if (!view.renderer.xr.isPresenting || workspaceGrabHand !== null) return;
       const action = view.pickSpatialAction(controller);
       if (action) {
+        clearAllDirectDrags();
         if (action === 'beam' || action === 'powered-wheel') selectTool(action);
         else if (action === 'run-toggle') toggleRun();
         else if (action === 'undo') undo();
@@ -226,6 +235,7 @@ export function setupXrConstruction({
       if (!isBuildMode()) return;
       const authoredHit = pickNearestAuthoredController(view, componentLayer, controller);
       if (!authoredHit) return;
+      clearAllDirectDrags();
 
       if (authoredHit.kind === 'component') {
         selectComponent(authoredHit.componentId);
@@ -240,11 +250,10 @@ export function setupXrConstruction({
       grip.getWorldPosition(worldPoint);
 
       if (isBuildMode() && workspaceGrabHand === null && workspaceHandle.containsWorldPoint(worldPoint)) {
+        clearAllDirectDrags();
         workspaceGrabHand = index;
         workspaceDrag = beginWorkspaceTranslation(view.workspaceRoot.position.toArray(), worldPoint.toArray());
         workspaceHandle.setActive(true);
-        clearStructuralDrag(state);
-        clearComponentDrag(state);
         clearPoweredWheelPreview();
         return;
       }
@@ -324,7 +333,13 @@ export function setupXrConstruction({
         releaseWorkspace();
         return;
       }
-      if (workspaceGrabHand !== null || !isBuildMode()) return;
+      if (workspaceGrabHand !== null || !isBuildMode()) {
+        if (!isBuildMode()) {
+          if (state.structuralDrag) clearStructuralDrag(state);
+          if (state.componentDrag) clearComponentDrag(state);
+        }
+        return;
+      }
 
       if (state.componentDrag) {
         updateComponentDrag({ grip, state, worldPoint, machinePoint });
@@ -377,7 +392,10 @@ export function setupXrConstruction({
 
       if (!isBuildMode()) {
         if (workspaceGrabHand !== null) releaseWorkspace();
-        for (const hand of hands) clearComponentDrag(hand.state);
+        for (const hand of hands) {
+          if (hand.state.structuralDrag) clearStructuralDrag(hand.state);
+          if (hand.state.componentDrag) clearComponentDrag(hand.state);
+        }
       }
 
       const componentDragHands = isBuildMode() ? hands.filter((hand) => hand.state.componentDrag) : [];
