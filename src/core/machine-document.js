@@ -10,6 +10,20 @@ const normalizeVec3 = (v) => {
   return v.map((value) => value / len);
 };
 
+function beamEndNodeId(document, beamId, end) {
+  const beam = document.beams.find((candidate) => candidate.id === beamId);
+  if (!beam) throw new Error(`unknown beam: ${beamId}`);
+  if (end !== 'a' && end !== 'b') throw new Error(`beam end must be "a" or "b", got: ${end}`);
+  return beam[end];
+}
+
+function beamLength(document, beam) {
+  const a = document.nodes.find((node) => node.id === beam.a)?.position;
+  const b = document.nodes.find((node) => node.id === beam.b)?.position;
+  if (!a || !b) return 0;
+  return distance(a, b);
+}
+
 export function createSeedMachine() {
   return {
     version: MACHINE_VERSION,
@@ -129,6 +143,45 @@ export function extendFromNode(document, startNodeId, endPosition, targetNodeId 
     thickness: 0.12,
     density: 420,
   });
+  next.revision += 1;
+  return assertValidMachine(next);
+}
+
+export function extendFromBeamEnd(document, beamId, end, endPosition, targetBeamEnd = null) {
+  assertValidMachine(document);
+  const startNodeId = beamEndNodeId(document, beamId, end);
+  const targetNodeId = targetBeamEnd
+    ? beamEndNodeId(document, targetBeamEnd.beamId, targetBeamEnd.end)
+    : null;
+  return extendFromNode(document, startNodeId, endPosition, targetNodeId);
+}
+
+export function moveBeamEnd(document, beamId, end, position) {
+  assertValidMachine(document);
+  if (!finiteVec3(position)) throw new Error('beam end position must be a finite vec3');
+
+  const nodeId = beamEndNodeId(document, beamId, end);
+  const currentNode = document.nodes.find((node) => node.id === nodeId);
+  if (currentNode.position.every((value, index) => value === position[index])) return document;
+
+  const affectedBeams = document.beams.filter((beam) => beam.a === nodeId || beam.b === nodeId);
+  const oldLengths = new Map(affectedBeams.map((beam) => [beam.id, beamLength(document, beam)]));
+  const next = clone(document);
+  next.nodes.find((node) => node.id === nodeId).position = [...position];
+
+  for (const beam of affectedBeams) {
+    const nextBeam = next.beams.find((candidate) => candidate.id === beam.id);
+    const newLength = beamLength(next, nextBeam);
+    if (newLength < MIN_BEAM_LENGTH) return document;
+    const oldLength = oldLengths.get(beam.id);
+    if (!(oldLength > 0)) continue;
+    const ratio = newLength / oldLength;
+    for (const component of next.components) {
+      if (component.hostBeamId !== beam.id) continue;
+      component.mount.position[0] *= ratio;
+    }
+  }
+
   next.revision += 1;
   return assertValidMachine(next);
 }
