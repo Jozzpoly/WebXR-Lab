@@ -1,6 +1,9 @@
+import { proposePoweredWheelPlacement } from './wheel-placement.js';
+
 export function attachDesktopComponents({
   view,
   componentLayer,
+  getDocument,
   isBuildMode,
   getTool,
   commitPoweredWheel,
@@ -9,6 +12,17 @@ export function attachDesktopComponents({
   selectComponent,
 }) {
   const canvas = view.renderer.domElement;
+
+  const candidateAtPointer = (event) => {
+    const hit = view.pickBeamSurface(event.clientX, event.clientY);
+    if (!hit) return null;
+    return proposePoweredWheelPlacement(
+      getDocument(),
+      hit.beamId,
+      hit.localPosition,
+      hit.localNormal,
+    );
+  };
 
   const onPointerMove = (event) => {
     if (!isBuildMode() || getTool() !== 'powered-wheel') {
@@ -19,8 +33,7 @@ export function attachDesktopComponents({
       clearPoweredWheelPreview();
       return;
     }
-    const nodeId = view.pickNode(event.clientX, event.clientY);
-    previewPoweredWheel(nodeId);
+    previewPoweredWheel(candidateAtPointer(event));
   };
 
   const onPointerDown = (event) => {
@@ -35,10 +48,10 @@ export function attachDesktopComponents({
     }
 
     if (getTool() !== 'powered-wheel') return;
-    const nodeId = view.pickNode(event.clientX, event.clientY);
-    if (!nodeId) return;
+    const candidate = candidateAtPointer(event);
+    if (!candidate) return;
     clearPoweredWheelPreview();
-    commitPoweredWheel(nodeId);
+    commitPoweredWheel(candidate);
     event.preventDefault();
   };
 
