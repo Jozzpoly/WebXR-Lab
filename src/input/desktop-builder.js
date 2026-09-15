@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MIN_BEAM_LENGTH } from '../core/machine-document.js';
+import { nearestAuthoredHit } from './authored-picking.js';
 import { beamEndPosition, nearestBeamEnd } from './structural-placement.js';
 import { BUILD_Y } from '../view/scene.js';
 
@@ -10,7 +11,6 @@ export function attachDesktopBuilder({
   isBuildMode,
   getGridEnabled,
   getTool,
-  pickComponent,
   selectBeam,
   commitCreateBeam,
   commitMoveBeamEnd,
@@ -122,26 +122,39 @@ export function attachDesktopBuilder({
   };
 
   canvas.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || !isBuildMode() || getTool() !== 'beam') return;
+    if (event.button !== 0 || !isBuildMode()) return;
 
-    const componentId = pickComponent?.(event.clientX, event.clientY)
-      ?? view.componentInteractionLayer?.pickPointer(event.clientX, event.clientY)
-      ?? null;
-    if (componentId) return;
-
-    const handle = structuralLayer.pickPointer(event.clientX, event.clientY);
-    if (handle) {
-      beginHandleDrag(handle, event);
+    const componentLayer = view.componentInteractionLayer;
+    if (getTool() === 'powered-wheel' && componentLayer?.pickPreviewPointer(event.clientX, event.clientY)) {
       return;
     }
 
-    const beamHit = view.pickBeamSurface(event.clientX, event.clientY);
-    if (beamHit?.beamId) {
-      selectBeam(beamHit.beamId);
+    if (getTool() === 'beam') {
+      const handle = structuralLayer.pickPointer(event.clientX, event.clientY);
+      if (handle) {
+        beginHandleDrag(handle, event);
+        event.stopImmediatePropagation();
+        return;
+      }
+    }
+
+    const authoredHit = nearestAuthoredHit(
+      view.pickBeamSurface(event.clientX, event.clientY),
+      componentLayer?.pickPointerHit(event.clientX, event.clientY) ?? null,
+    );
+
+    if (authoredHit?.kind === 'component') {
+      return;
+    }
+
+    if (authoredHit?.kind === 'beam') {
+      selectBeam(authoredHit.beamId);
       event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
 
+    if (getTool() !== 'beam') return;
     const point = view.pointOnBuildPlane(event.clientX, event.clientY);
     if (point) beginFreeCreate(point, event);
   });
