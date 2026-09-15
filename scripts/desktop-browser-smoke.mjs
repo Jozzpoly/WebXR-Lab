@@ -10,6 +10,8 @@ import {
   extendFromBeamEnd,
   rehostPoweredWheel,
 } from '../src/core/machine-document.js';
+import { beamLocalToMachinePoint, getBeamFrame } from '../src/core/beam-frame.js';
+import { translateStructuralIsland } from '../src/core/structural-translation.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
 import { proposePoweredWheelPlacement } from '../src/input/wheel-placement.js';
 
@@ -352,7 +354,7 @@ async function main() {
     const surface = await browserBeamSurface(client, beamProbe);
     if (!surface) throw new Error(`browser could not resolve real beam surface for wheel preview · input before ${JSON.stringify(inputBeforeHover)} · after ${JSON.stringify(inputAfterHover)}`);
     const candidate = proposePoweredWheelPlacement(mirror, surface.beamId, surface.localPosition, surface.localNormal);
-    let previewDoc = attachPoweredWheel(mirror, candidate.hostBeamId, {
+    const previewDoc = attachPoweredWheel(mirror, candidate.hostBeamId, {
       mount: candidate.mount,
       motorVelocity: candidate.motorVelocity,
     });
@@ -373,6 +375,37 @@ async function main() {
     await mouseClick(client, previewScreen);
     await waitForUi(client, (ui) => ui.wheels === 1 && ui.detail?.startsWith('Powered wheel mounted on'), 'real mouse wheel placement');
     mirror = previewDoc;
+
+    const b2BeforeMove = compileMachine(mirror).islands.flatMap((island) => island.beams).find((beam) => beam.id === 'b2');
+    if (!b2BeforeMove) throw new Error('mirror b2 missing before direct island drag');
+    const b2ProbeBeforeMove = await browserProjectMachine(client, b2BeforeMove.machinePosition);
+    await requireCanvasPoint(client, b2ProbeBeforeMove, 'direct island drag beam probe');
+    const b2SurfaceBeforeMove = await browserBeamSurface(client, b2ProbeBeforeMove);
+    if (!b2SurfaceBeforeMove || b2SurfaceBeforeMove.beamId !== 'b2') {
+      throw new Error(`browser direct island ray did not resolve b2: ${JSON.stringify(b2SurfaceBeforeMove)}`);
+    }
+    const b2FrameBeforeMove = getBeamFrame(mirror, 'b2');
+    const b2GrabMachine = beamLocalToMachinePoint(b2FrameBeforeMove, b2SurfaceBeforeMove.localPosition);
+    const rawIslandDelta = cameraRight.clone().multiplyScalar(0.44).toArray();
+    const islandDelta = snapPoint(rawIslandDelta);
+    const islandTargetMachine = b2GrabMachine.map((value, index) => value + rawIslandDelta[index]);
+    const islandGrabScreen = await browserProjectMachine(client, b2GrabMachine);
+    const islandTargetScreen = await browserProjectMachine(client, islandTargetMachine);
+    await requireCanvasPoint(client, islandGrabScreen, 'direct island drag grab');
+    await requireCanvasPoint(client, islandTargetScreen, 'direct island drag target');
+    await mouseDrag(client, islandGrabScreen, islandTargetScreen);
+    const islandMoveUi = await waitForUi(client,
+      (ui) => ui.beams === 2 && ui.wheels === 1 && ui.truth?.includes('Selected b2') && ui.detail?.includes('Moved the welded island containing b2'),
+      'real mouse direct welded-island drag');
+    mirror = translateStructuralIsland(mirror, 'b2', islandDelta);
+
+    const movedWheelMirror = compileMachine(mirror).components.find((component) => component.id === 'c1');
+    const movedWheelBrowser = await browserComponentPosition(client, 'c1');
+    if (!movedWheelMirror || !movedWheelBrowser) throw new Error('wheel c1 missing after direct island drag');
+    const movedWheelDelta = Math.hypot(...movedWheelBrowser.map((value, index) => value - movedWheelMirror.center[index]));
+    if (movedWheelDelta > 1e-4) {
+      throw new Error(`hosted wheel did not follow welded island coherently: ${movedWheelDelta} m · browser ${JSON.stringify(movedWheelBrowser)} · core ${JSON.stringify(movedWheelMirror.center)}`);
+    }
 
     const authoredWheel = compileMachine(mirror).components.find((component) => component.id === 'c1');
     const b2 = compileMachine(mirror).islands.flatMap((island) => island.beams).find((beam) => beam.id === 'b2');
@@ -404,9 +437,10 @@ async function main() {
       (ui) => ui.mode === 'BUILD' && ui.beams === 2 && ui.wheels === 1 && ui.detail?.startsWith('STOP: simulation-world motion discarded'),
       'desktop STOP authored restoration');
 
-    console.log('Desktop browser rehearsal PASS · 7/7');
-    console.log('blank -> beam-create -> beam-select -> beam-extend -> wheel-place -> direct-wheel-rehost -> run-stop-authority');
+    console.log('Desktop browser rehearsal PASS · 8/8');
+    console.log('blank -> beam-create -> beam-select -> beam-extend -> wheel-place -> direct-island-drag -> direct-wheel-rehost -> run-stop-authority');
     console.log(`Final UI: ${JSON.stringify(stopped)}`);
+    console.log(`Island move UI: ${JSON.stringify(islandMoveUi)}`);
     console.log(`Rehost UI: ${JSON.stringify(rehostUi)}`);
     console.log(`Initial UI: ${JSON.stringify(initial)}`);
   } catch (error) {
