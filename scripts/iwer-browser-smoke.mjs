@@ -220,7 +220,10 @@ async function main() {
     await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
     await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
 
-    const rehearsalDeadline = Date.now() + 35_000;
+    // The full lifecycle deliberately performs many real XR-frame gestures. Individual
+    // waits already have 2.5 s watchdogs; this outer budget only needs to be generous
+    // enough for the complete blank → build → RUN → delete → blank rehearsal.
+    const rehearsalDeadline = Date.now() + 75_000;
     let result = null;
     while (Date.now() < rehearsalDeadline) {
       result = await client.evaluate(`(() => {
@@ -246,6 +249,8 @@ async function main() {
         title: document.title,
         body: document.body.innerText.slice(0, 2400),
         presenting: Boolean(document.querySelector('.xr-entry')?.textContent?.includes('EXIT')),
+        trace: window.__riftworksXrRehearsalTrace ?? null,
+        result: window.__riftworksXrRehearsal ?? null,
       })`);
       throw new Error(`IWER rehearsal timed out. Browser state: ${JSON.stringify(status)}`);
     }
