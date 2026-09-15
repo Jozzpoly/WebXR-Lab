@@ -51,22 +51,6 @@ export function createEmptyMachine() {
   };
 }
 
-export function createSeedMachine() {
-  return {
-    version: MACHINE_VERSION,
-    revision: 0,
-    nextIds: { node: 3, beam: 2, component: 1 },
-    nodes: [
-      { id: 'n1', position: [-0.4, 0.45, 0] },
-      { id: 'n2', position: [0.4, 0.45, 0] },
-    ],
-    beams: [
-      { id: 'b1', a: 'n1', b: 'n2', roll: 0, thickness: 0.12, density: 420 },
-    ],
-    components: [],
-  };
-}
-
 export function validateMachine(document) {
   const errors = [];
   if (!document || document.version !== MACHINE_VERSION) errors.push(`unsupported machine version: ${document?.version}`);
@@ -178,44 +162,6 @@ export function createBeam(document, startPosition, endPosition, options = {}) {
     roll,
     thickness,
     density,
-  });
-  next.revision += 1;
-  return assertValidMachine(next);
-}
-
-export function extendFromNode(document, startNodeId, endPosition, targetNodeId = null) {
-  assertValidMachine(document);
-  if (!finiteVec3(endPosition)) throw new Error('endPosition must be a finite vec3');
-
-  const start = document.nodes.find((node) => node.id === startNodeId);
-  if (!start) throw new Error(`unknown start node: ${startNodeId}`);
-
-  const next = clone(document);
-  let endNode;
-
-  if (targetNodeId) {
-    endNode = next.nodes.find((node) => node.id === targetNodeId);
-    if (!endNode) throw new Error(`unknown target node: ${targetNodeId}`);
-    if (endNode.id === startNodeId) return document;
-    const duplicate = next.beams.some((beam) =>
-      (beam.a === startNodeId && beam.b === targetNodeId) ||
-      (beam.a === targetNodeId && beam.b === startNodeId));
-    if (duplicate) return document;
-  } else {
-    const nodeId = `n${next.nextIds.node++}`;
-    endNode = { id: nodeId, position: [...endPosition] };
-    next.nodes.push(endNode);
-  }
-
-  if (distance(endNode.position, start.position) < MIN_BEAM_LENGTH) return document;
-
-  next.beams.push({
-    id: `b${next.nextIds.beam++}`,
-    a: startNodeId,
-    b: endNode.id,
-    roll: 0,
-    thickness: 0.12,
-    density: 420,
   });
   next.revision += 1;
   return assertValidMachine(next);
