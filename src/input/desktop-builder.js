@@ -12,14 +12,16 @@ export function attachDesktopBuilder({
   getTool,
   pickComponent,
   selectBeam,
-  clearBeamSelection,
+  commitCreateBeam,
   commitMoveBeamEnd,
   commitExtendBeamEnd,
 }) {
   const canvas = view.renderer.domElement;
   const state = {
-    handle: null,
+    operation: null,
     pointerId: null,
+    startPoint: null,
+    startTargetBeamEnd: null,
     lastPoint: null,
     targetBeamEnd: null,
   };
@@ -34,23 +36,49 @@ export function attachDesktopBuilder({
     );
   };
 
+  const clearState = (pointerId = state.pointerId) => {
+    view.hideGhost();
+    state.operation = null;
+    state.pointerId = null;
+    state.startPoint = null;
+    state.startTargetBeamEnd = null;
+    state.lastPoint = null;
+    state.targetBeamEnd = null;
+    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+  };
+
   const updateDrag = (event) => {
-    if (!state.handle || !isBuildMode() || getTool() !== 'beam') return;
+    if (!state.operation || !isBuildMode() || getTool() !== 'beam') return;
     const point = view.pointOnBuildPlane(event.clientX, event.clientY);
     if (!point) return;
 
     const doc = getDocument();
     const snapped = snap(point);
-    const start = beamEndPosition(doc, state.handle.beamId, state.handle.end);
-    const opposite = beamEndPosition(doc, state.handle.beamId, state.handle.end === 'a' ? 'b' : 'a');
-    if (!start || !opposite) return;
-
     state.targetBeamEnd = null;
     let end = snapped.toArray();
-    if (state.handle.kind === 'extend') {
+
+    if (state.operation.kind === 'create') {
+      const target = nearestBeamEnd(doc, end, 0.16, state.startTargetBeamEnd);
+      if (target) {
+        state.targetBeamEnd = { beamId: target.beamId, end: target.end };
+        end = target.position;
+      }
+      const start = state.startPoint;
+      const length = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]);
+      state.lastPoint = [...end];
+      view.showGhost(start, end, length >= MIN_BEAM_LENGTH);
+      return;
+    }
+
+    const handle = state.operation.handle;
+    const start = beamEndPosition(doc, handle.beamId, handle.end);
+    const opposite = beamEndPosition(doc, handle.beamId, handle.end === 'a' ? 'b' : 'a');
+    if (!start || !opposite) return;
+
+    if (handle.kind === 'extend') {
       const target = nearestBeamEnd(doc, end, 0.16, {
-        beamId: state.handle.beamId,
-        end: state.handle.end,
+        beamId: handle.beamId,
+        end: handle.end,
       });
       if (target) {
         state.targetBeamEnd = { beamId: target.beamId, end: target.end };
@@ -58,7 +86,7 @@ export function attachDesktopBuilder({
       }
     }
 
-    const previewStart = state.handle.kind === 'move' ? opposite : start;
+    const previewStart = handle.kind === 'move' ? opposite : start;
     const length = Math.hypot(
       end[0] - previewStart[0],
       end[1] - previewStart[1],
@@ -68,13 +96,28 @@ export function attachDesktopBuilder({
     view.showGhost(previewStart, end, length >= MIN_BEAM_LENGTH);
   };
 
-  const beginDrag = (handle, event) => {
-    state.handle = handle;
+  const beginHandleDrag = (handle, event) => {
+    state.operation = { kind: 'handle', handle };
     state.pointerId = event.pointerId;
     state.lastPoint = null;
     state.targetBeamEnd = null;
     canvas.setPointerCapture(event.pointerId);
     updateDrag(event);
+    event.preventDefault();
+  };
+
+  const beginFreeCreate = (point, event) => {
+    const doc = getDocument();
+    const snapped = snap(point);
+    const target = nearestBeamEnd(doc, snapped.toArray(), 0.16);
+    state.startTargetBeamEnd = target ? { beamId: target.beamId, end: target.end } : null;
+    state.startPoint = target ? [...target.position] : snapped.toArray();
+    state.operation = { kind: 'create' };
+    state.pointerId = event.pointerId;
+    state.lastPoint = [...state.startPoint];
+    state.targetBeamEnd = null;
+    canvas.setPointerCapture(event.pointerId);
+    view.showGhost(state.startPoint, state.startPoint, false);
     event.preventDefault();
   };
 
@@ -88,7 +131,7 @@ export function attachDesktopBuilder({
 
     const handle = structuralLayer.pickPointer(event.clientX, event.clientY);
     if (handle) {
-      beginDrag(handle, event);
+      beginHandleDrag(handle, event);
       return;
     }
 
@@ -99,33 +142,39 @@ export function attachDesktopBuilder({
       return;
     }
 
-    clearBeamSelection();
+    const point = view.pointOnBuildPlane(event.clientX, event.clientY);
+    if (point) beginFreeCreate(point, event);
   });
 
   canvas.addEventListener('pointermove', updateDrag);
 
   const finish = (event) => {
-    if (state.pointerId !== event.pointerId || !state.handle) return;
+    if (state.pointerId !== event.pointerId || !state.operation) return;
 
     if (state.lastPoint) {
-      if (state.handle.kind === 'move') {
-        commitMoveBeamEnd(state.handle.beamId, state.handle.end, state.lastPoint);
-      } else {
-        commitExtendBeamEnd(
-          state.handle.beamId,
-          state.handle.end,
+      if (state.operation.kind === 'create') {
+        commitCreateBeam(
+          state.startPoint,
           state.lastPoint,
+          state.startTargetBeamEnd,
           state.targetBeamEnd,
         );
+      } else {
+        const handle = state.operation.handle;
+        if (handle.kind === 'move') {
+          commitMoveBeamEnd(handle.beamId, handle.end, state.lastPoint);
+        } else {
+          commitExtendBeamEnd(
+            handle.beamId,
+            handle.end,
+            state.lastPoint,
+            state.targetBeamEnd,
+          );
+        }
       }
     }
 
-    view.hideGhost();
-    state.handle = null;
-    state.pointerId = null;
-    state.lastPoint = null;
-    state.targetBeamEnd = null;
-    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    clearState(event.pointerId);
   };
 
   canvas.addEventListener('pointerup', finish);
