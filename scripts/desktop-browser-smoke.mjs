@@ -181,6 +181,10 @@ async function browserComponentPosition(client, componentId) {
   return client.evaluate(`window.__riftworksDesktopEvidence?.componentMachinePosition(${JSON.stringify(componentId)}) ?? null`);
 }
 
+async function browserInputEvidence(client) {
+  return client.evaluate('window.__riftworksDesktopInputEvidence?.snapshot() ?? null');
+}
+
 async function mouseClick(client, point) {
   await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y });
   await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1 });
@@ -293,8 +297,8 @@ async function main() {
     await loaded;
 
     const initial = await waitForUi(client, (ui) => ui.mode === 'BUILD' && ui.beams === 0 && ui.wheels === 0, 'blank desktop workshop');
-    const evidenceReady = await client.evaluate('Boolean(window.__riftworksDesktopEvidence)');
-    if (!evidenceReady) throw new Error('read-only desktop evidence hook is unavailable in Vite dev mode');
+    const evidenceReady = await client.evaluate('Boolean(window.__riftworksDesktopEvidence) && Boolean(window.__riftworksDesktopInputEvidence)');
+    if (!evidenceReady) throw new Error('read-only desktop evidence hooks are unavailable in Vite dev mode');
 
     const rect = await client.evaluate(`(() => {
       const r = document.querySelector('canvas')?.getBoundingClientRect();
@@ -340,11 +344,13 @@ async function main() {
     if (!b1) throw new Error('mirror b1 missing before wheel placement');
     const beamProbe = await browserProjectMachine(client, b1.machinePosition);
     await requireCanvasPoint(client, beamProbe, 'wheel beam probe');
+    const inputBeforeHover = await browserInputEvidence(client);
     await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: beamProbe.x, y: beamProbe.y });
     await wait(100);
+    const inputAfterHover = await browserInputEvidence(client);
 
     const surface = await browserBeamSurface(client, beamProbe);
-    if (!surface) throw new Error('browser could not resolve real beam surface for wheel preview');
+    if (!surface) throw new Error(`browser could not resolve real beam surface for wheel preview · input before ${JSON.stringify(inputBeforeHover)} · after ${JSON.stringify(inputAfterHover)}`);
     const candidate = proposePoweredWheelPlacement(mirror, surface.beamId, surface.localPosition, surface.localNormal);
     let previewDoc = attachPoweredWheel(mirror, candidate.hostBeamId, {
       mount: candidate.mount,
@@ -354,7 +360,9 @@ async function main() {
     if (!previewWheel) throw new Error('mirror wheel preview missing');
 
     const actualPreviewMachine = await browserPreviewPosition(client);
-    if (!actualPreviewMachine) throw new Error('browser produced no wheel preview after real beam hover');
+    if (!actualPreviewMachine) {
+      throw new Error(`browser produced no wheel preview after real beam hover · probe ${JSON.stringify(beamProbe)} · surface ${JSON.stringify(surface)} · input before ${JSON.stringify(inputBeforeHover)} · after ${JSON.stringify(inputAfterHover)}`);
+    }
     const previewDelta = Math.hypot(...actualPreviewMachine.map((value, index) => value - previewWheel.center[index]));
     if (previewDelta > 1e-4) {
       throw new Error(`browser/core preview disagreement: ${previewDelta} m · browser ${JSON.stringify(actualPreviewMachine)} · core ${JSON.stringify(previewWheel.center)}`);
