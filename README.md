@@ -68,7 +68,7 @@ The command translates all connected structural nodes by one machine-space delta
 
 The drag is preview-first: hypothetical geometry is rendered while the pointer moves, but `MachineDocument` is unchanged until release. `pointercancel` discards the gesture.
 
-A real ambiguity found by the new browser gate is now explicit rather than hidden: a powered-wheel preview can overlap the same beam surface the user may want to grab. The current desktop arbitration is:
+A real ambiguity found by the browser gate is now explicit rather than hidden: a powered-wheel preview can overlap the same beam surface the user may want to grab. The current desktop arbitration is:
 
 - short click on the wheel ghost → commit the wheel;
 - drag through the same overlap beyond the movement threshold → take structural context and move the welded island.
@@ -88,21 +88,40 @@ Desktop and XR share authored commands, but they do **not** concurrently own tra
 
 Interaction proxies and structural handles are made pick-ready when they are synchronized. Correct input must not depend on a coincidental render frame occurring first.
 
+### Runtime attribution and reproducible CI
+
+Every production candidate exposes a deterministic runtime fingerprint in the UI as `RUNTIME <id>`.
+
+The fingerprint tracks runtime-bearing source/config plus the committed dependency lock. README/docs-only edits do not change it; executable source or dependency-graph changes do. CI verifies that the same ID is embedded in the production `dist` artifact.
+
+`package-lock.json` is committed and Verify installs through `npm ci` under Node `22.16.0`, so the current CI lane uses the exact reviewed dependency graph rather than resolving fresh transitive versions on every run.
+
 ## Current evidence
 
-Current verified construction-grammar candidate:
+Latest full verified runtime/evidence checkpoint:
 
-`fa8f23b71f67c7a0c872d4ff85dbd46beb058943`
+`bee505d54bce907591ad70c50e92b0da51a83bb1`
 
-GitHub `Verify Riftworks` run `34983007068` (#173):
+GitHub `Verify Riftworks` run `34990025803` (#192):
 
-- dependency install: **PASS**;
-- complete Node contract/physics/gesture suite: **67/67 PASS**;
+- committed dependency lock + `npm ci`: **PASS**;
+- complete Node contract/physics/gesture/evidence suite: **70/70 PASS**;
 - production Vite build: **PASS**;
+- production runtime-fingerprint verification: **PASS**;
 - real Chromium desktop mouse rehearsal: **8/8 PASS**;
 - Chromium + IWER immersive browser rehearsal: **18/18 PASS**.
 
-The desktop rehearsal now executes:
+Verified runtime fingerprint:
+
+`b2479b60ad18`
+
+The interaction-bearing direct-grab checkpoint remains:
+
+`fa8f23b71f67c7a0c872d4ff85dbd46beb058943`
+
+Later commits through the verified checkpoint add attribution/reproducibility infrastructure and do not change the direct-grab gameplay semantics.
+
+The desktop rehearsal executes:
 
 `blank → beam-create → beam-select → beam-extend → wheel-place → direct-island-drag → direct-wheel-rehost → RUN/STOP authority`
 
@@ -127,7 +146,8 @@ Important protected behavior includes:
 - desktop/XR transient input isolation;
 - direct welded-island translation preserving host-local component intent and leaving unrelated islands untouched;
 - click-vs-drag arbitration when a wheel preview and structural beam compete for the same pointer surface;
-- cancellation of direct island drag without authored mutation.
+- cancellation of direct island drag without authored mutation;
+- deterministic runtime attribution and locked CI dependency installation.
 
 ## Owner evidence
 
@@ -135,15 +155,19 @@ A first real Owner desktop recording from the non-production branch preview alre
 
 That recording predates the direct welded-island grab experiment above. Therefore the current runtime candidate still needs a **small Owner feel pass**, not another broad automated campaign.
 
-The previously confirmed branch preview is:
+The branch preview is:
 
 `https://foundation-reset-webxr-lab.jozzpoly.workers.dev`
 
-Because this repository does not contain the Worker deployment workflow, GitHub GREEN does not prove that the external preview has already advanced to the new runtime candidate. Re-establish preview freshness before judging the new gesture.
+Because this repository does not contain the Worker deployment workflow, GitHub GREEN does not prove that the external preview has advanced to the latest candidate. The runtime badge now makes freshness explicit:
+
+> Treat a new Owner run as evidence for the current verified candidate only when the deployed UI visibly shows **`RUNTIME b2479b60ad18`**.
+
+A different ID means a different runtime and must not be conflated with run #192 evidence.
 
 ## Next Owner question
 
-The next test should be qualitative and short. Build any small welded structure and answer one question:
+The next test should be qualitative and short. Once the preview shows `RUNTIME b2479b60ad18`, build any small welded structure and answer one question:
 
 > **Does grabbing a real beam body to move its whole welded island feel more like manipulating a machine, or does it create a new kind of ambiguity/frustration?**
 
@@ -175,7 +199,7 @@ Visual/haptic/audio polish is still not a blanket next step. Interaction informa
 ## Local validation
 
 ```bash
-npm install
+npm ci
 npm test
 npm run build
 npm run dev
