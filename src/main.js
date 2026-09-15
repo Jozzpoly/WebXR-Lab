@@ -11,6 +11,7 @@ import {
   removeBeam,
   removeComponent,
 } from './core/machine-document.js';
+import { translateStructuralIsland } from './core/structural-translation.js';
 import { createPoweredCartMachine } from './core/specimens.js';
 import { compileMachine } from './runtime/compile-machine.js';
 import { MACHINE_YARD_WORLD, resolveRunSpawn } from './runtime/machine-yard-world.js';
@@ -78,7 +79,7 @@ app.innerHTML = `
           <span>wheels <b id="wheelCount">–</b></span>
           <span>islands <b id="islandCount">–</b></span>
         </div>
-        <p class="hint"><b>Desktop:</b> drag empty workspace → create beam · click authored object → edit it · drag an existing wheel onto another beam face → rehost same part · WHEEL ghost click mounts new wheel · Delete removes selection · RMB orbit · Space RUN/STOP.</p>
+        <p class="hint"><b>Desktop:</b> drag empty workspace → create beam · drag a beam body → move its welded island · endpoint handles reshape/extend · drag an existing wheel onto another beam face → rehost same part · WHEEL ghost click mounts new wheel · Delete removes selection · RMB orbit · Space RUN/STOP.</p>
         <p class="hint"><b>XR/IWER:</b> trigger selects nearest authored object; grip + material hand movement rehosts a wheel, while a squeeze without movement remains selection.</p>
       </details>
       <div id="xrMount" class="xr-mount"></div>
@@ -129,6 +130,7 @@ let runFingerprint = null;
 let selectedComponentId = null;
 let selectedBeamId = null;
 let wheelPreviewKey = null;
+let structuralTranslationPreviewActive = false;
 
 function selectedWheel() {
   if (!selectedComponentId) return null;
@@ -197,10 +199,10 @@ function updateUi(message = null) {
     ? selected
       ? 'Drag this wheel onto another beam face to rehost the same authored part. MIRROR changes mount orientation and coherent drive sign; REVERSE changes motor control only.'
       : selectedBeamId && tool === 'beam'
-        ? 'White handle reshapes this beam end. Green handle pulls a new beam from this part. Delete removes the selected part.'
+        ? 'Drag the beam body to move its whole welded island. White handles reshape endpoints; green handles pull new beams. Delete removes the selected part.'
         : tool === 'beam'
           ? hasStructure
-            ? 'Drag on empty workspace to create another independent part, or select an existing authored object to revise it.'
+            ? 'Drag empty workspace to create an independent part, or drag an existing beam body to move its welded island.'
             : 'Drag directly on the empty workspace to create the first structural part.'
           : 'Hover a real beam face to preview its host-relative wheel mount; click the wheel ghost itself to commit.'
     : 'RUN uses one explicit machine-local → simulation-world spawn. Authoring workspace has no runtime authority.');
@@ -216,6 +218,8 @@ function updateUi(message = null) {
 }
 
 function renderAuthored() {
+  structuralTranslationPreviewActive = false;
+  structuralLayer.group.visible = true;
   activePlan = compileMachine(documentState);
   if (selectedComponentId && !documentState.components.some((component) => component.id === selectedComponentId)) selectedComponentId = null;
   if (selectedBeamId && !documentState.beams.some((beam) => beam.id === selectedBeamId)) selectedBeamId = null;
@@ -223,6 +227,37 @@ function renderAuthored() {
   componentLayer.sync(activePlan);
   componentLayer.setSelected(selectedComponentId);
   syncStructuralLayer();
+}
+
+function previewStructuralIslandTranslation(beamId, delta) {
+  if (mode !== 'build' || tool !== 'beam' || selectedComponentId) return;
+  const hypothetical = translateStructuralIsland(documentState, beamId, delta);
+  if (hypothetical === documentState) {
+    clearStructuralIslandTranslationPreview();
+    return;
+  }
+  const previewPlan = compileMachine(hypothetical);
+  view.renderAuthored(hypothetical, previewPlan);
+  structuralLayer.group.visible = false;
+  structuralTranslationPreviewActive = true;
+}
+
+function clearStructuralIslandTranslationPreview() {
+  if (!structuralTranslationPreviewActive) return;
+  view.renderAuthored(documentState, activePlan);
+  structuralLayer.group.visible = true;
+  syncStructuralLayer();
+  structuralTranslationPreviewActive = false;
+}
+
+function commitStructuralIslandTranslation(beamId, delta) {
+  clearStructuralIslandTranslationPreview();
+  const next = translateStructuralIsland(documentState, beamId, delta);
+  if (next === documentState) return;
+  selectedBeamId = beamId;
+  commitDocument(next, `Moved the welded island containing ${beamId} as one rigid authored structure. Hosted component intent stayed local to its parts.`, {
+    preserveBeamSelection: true,
+  });
 }
 
 function commitDocument(next, message, {
@@ -390,7 +425,7 @@ function selectBeam(beamId) {
   clearPoweredWheelPreview();
   selectedBeamId = beamId;
   syncStructuralLayer();
-  updateUi(`Selected ${beamId}. Its authored type now owns the editing context.`);
+  updateUi(`Selected ${beamId}. Drag its body to move the whole welded island; use endpoint handles for local structural edits.`);
 }
 
 function clearBeamSelection(message = null) {
@@ -469,6 +504,7 @@ function selectTool(nextTool) {
     updateUi('Create a structural part before mounting a wheel.');
     return;
   }
+  clearStructuralIslandTranslationPreview();
   selectedComponentId = null;
   selectedBeamId = null;
   componentLayer.setSelected(null);
@@ -481,6 +517,7 @@ function selectTool(nextTool) {
 
 function startRun() {
   if (mode !== 'build') return;
+  clearStructuralIslandTranslationPreview();
   if (documentState.beams.length === 0) {
     updateUi('RUN needs at least one authored structural part. The empty workshop remains unchanged.');
     return;
@@ -520,6 +557,7 @@ function toggleRun() {
 
 function undoLast() {
   if (mode !== 'build' || history.length === 0) return;
+  clearStructuralIslandTranslationPreview();
   documentState = history.pop();
   selectedComponentId = null;
   selectedBeamId = null;
@@ -536,6 +574,7 @@ deleteWheelButton.addEventListener('click', () => editSelectedWheel('wheel-delet
 doneWheelButton.addEventListener('click', () => editSelectedWheel('wheel-done'));
 cartButton.addEventListener('click', () => {
   if (mode !== 'build') return;
+  clearStructuralIslandTranslationPreview();
   history.push(documentState);
   documentState = createPoweredCartMachine();
   selectedComponentId = null;
@@ -554,6 +593,7 @@ followButton.addEventListener('click', () => {
 });
 resetButton.addEventListener('click', () => {
   if (mode !== 'build') return;
+  clearStructuralIslandTranslationPreview();
   const blank = createEmptyMachine();
   if (documentState.beams.length === 0 && documentState.components.length === 0) return;
   history.push(documentState);
@@ -578,6 +618,7 @@ window.addEventListener('keydown', (event) => {
     toggleRun();
   }
   if (!event.repeat && event.code === 'Escape') {
+    clearStructuralIslandTranslationPreview();
     if (selectedComponentId) clearComponentSelection();
     else clearBeamSelection();
   }
@@ -601,6 +642,9 @@ attachDesktopBuilder({
   commitCreateBeam,
   commitMoveBeamEnd,
   commitExtendBeamEnd,
+  previewStructuralIslandTranslation,
+  clearStructuralIslandTranslationPreview,
+  commitStructuralIslandTranslation,
 });
 attachDesktopComponents({
   view,
