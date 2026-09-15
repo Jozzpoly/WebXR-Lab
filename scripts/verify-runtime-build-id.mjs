@@ -1,8 +1,9 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { computeRuntimeBuildId } from './runtime-build-id.mjs';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = fileURLToPath(new URL('..', import.meta.url));
 const dist = join(root, 'dist');
 const expected = computeRuntimeBuildId(root);
 
