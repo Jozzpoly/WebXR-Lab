@@ -77,8 +77,8 @@ app.innerHTML = `
           <span>wheels <b id="wheelCount">–</b></span>
           <span>islands <b id="islandCount">–</b></span>
         </div>
-        <p class="hint"><b>Desktop:</b> drag empty workspace → create beam · click beam → white end reshapes, green end extends · Delete removes selected beam · RMB orbit · Space RUN/STOP.</p>
-        <p class="hint"><b>XR/IWER:</b> trigger selects parts/spatial controls; grip creates/manipulates structural parts, mounts wheels, or moves the BUILD workspace.</p>
+        <p class="hint"><b>Desktop:</b> drag empty workspace → create beam · click authored object → edit it · WHEEL: hover a beam, then click the wheel ghost to mount · Delete removes selection · RMB orbit · Space RUN/STOP.</p>
+        <p class="hint"><b>XR/IWER:</b> trigger selects the nearest authored object/spatial control; grip creates/manipulates parts, mounts wheels, or moves the BUILD workspace.</p>
       </details>
       <div id="xrMount" class="xr-mount"></div>
     </aside>
@@ -199,9 +199,9 @@ function updateUi(message = null) {
         ? 'White handle reshapes this beam end. Green handle pulls a new beam from this part. Delete removes the selected part.'
         : tool === 'beam'
           ? hasStructure
-            ? 'Drag on empty workspace to create another independent part, or select an existing beam to revise it.'
+            ? 'Drag on empty workspace to create another independent part, or select an existing authored object to revise it.'
             : 'Drag directly on the empty workspace to create the first structural part.'
-          : 'Hover or approach a real beam face to preview the exact host-relative wheel mount before commit.'
+          : 'Hover a real beam face to preview its host-relative wheel mount; click the wheel ghost itself to commit.'
     : 'RUN uses one explicit machine-local → simulation-world spawn. Authoring workspace has no runtime authority.');
 
   view.updateSpatialControls({
@@ -346,13 +346,14 @@ function commitPoweredWheel(candidate) {
 }
 
 function selectBeam(beamId) {
-  if (mode !== 'build' || tool !== 'beam' || !documentState.beams.some((beam) => beam.id === beamId)) return;
+  if (mode !== 'build' || !documentState.beams.some((beam) => beam.id === beamId)) return;
+  tool = 'beam';
   selectedComponentId = null;
   componentLayer.setSelected(null);
   clearPoweredWheelPreview();
   selectedBeamId = beamId;
   syncStructuralLayer();
-  updateUi(`Selected ${beamId}. Manipulate the part directly or delete it.`);
+  updateUi(`Selected ${beamId}. Its authored type now owns the editing context.`);
 }
 
 function clearBeamSelection(message = null) {
@@ -366,12 +367,13 @@ function selectComponent(componentId) {
   if (mode !== 'build') return;
   const component = documentState.components.find((candidate) => candidate.id === componentId);
   if (!component || component.kind !== 'powered-wheel') return;
+  tool = 'powered-wheel';
   selectedBeamId = null;
   syncStructuralLayer();
   selectedComponentId = componentId;
   clearPoweredWheelPreview();
   componentLayer.setSelected(componentId);
-  updateUi(`Selected ${componentId}. Its host-relative mount and identity remain authored truth.`);
+  updateUi(`Selected ${componentId}. Its authored type now owns the editing context.`);
 }
 
 function clearComponentSelection(message = null) {
