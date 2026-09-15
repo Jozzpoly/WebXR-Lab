@@ -46,6 +46,8 @@ export function setupXrConstruction({
 
   const workspaceHandle = new WorkspaceGrabHandle();
   view.workspaceRoot.add(workspaceHandle.group);
+  workspaceHandle.group.visible = false;
+  view.spatialPanel.group.visible = false;
   let workspaceGrabHand = null;
   let workspaceDrag = null;
 
@@ -71,11 +73,15 @@ export function setupXrConstruction({
     view.camera.position.set(0, 0, 0);
     view.camera.quaternion.identity();
     view.camera.updateMatrixWorld(true);
+    view.spatialPanel.group.visible = true;
+    workspaceHandle.group.visible = isBuildMode();
   });
   view.renderer.xr.addEventListener('sessionend', () => {
     releaseWorkspace();
     clearPoweredWheelPreview();
     for (const hand of hands) clearStructuralDrag(hand.state);
+    view.spatialPanel.group.visible = false;
+    workspaceHandle.group.visible = false;
     workspaceDelta.copy(view.workspaceRoot.position).sub(workspaceAtSessionStart);
     view.camera.position.copy(desktopPosition).add(workspaceDelta);
     view.camera.quaternion.copy(desktopQuaternion);
@@ -176,7 +182,7 @@ export function setupXrConstruction({
       grip.updateWorldMatrix(true, false);
       grip.getWorldPosition(worldPoint);
 
-      if (workspaceGrabHand === null && workspaceHandle.containsWorldPoint(worldPoint)) {
+      if (isBuildMode() && workspaceGrabHand === null && workspaceHandle.containsWorldPoint(worldPoint)) {
         workspaceGrabHand = index;
         workspaceDrag = beginWorkspaceTranslation(view.workspaceRoot.position.toArray(), worldPoint.toArray());
         workspaceHandle.setActive(true);
@@ -259,6 +265,9 @@ export function setupXrConstruction({
       return view.workspaceToWorldPoint(local, target);
     },
     update() {
+      workspaceHandle.group.visible = view.renderer.xr.isPresenting && isBuildMode();
+      if (!isBuildMode() && workspaceGrabHand !== null) releaseWorkspace();
+
       if (workspaceGrabHand !== null && workspaceDrag) {
         clearPoweredWheelPreview();
         const hand = hands[workspaceGrabHand];
