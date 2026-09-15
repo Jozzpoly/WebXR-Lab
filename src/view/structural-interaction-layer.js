@@ -95,6 +95,8 @@ export class StructuralInteractionLayer {
       this.handles.add(extend);
       this.targets.push(extend);
     }
+
+    this.group.updateWorldMatrix(true, true);
   }
 
   #setPointer(clientX, clientY) {
