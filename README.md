@@ -14,9 +14,9 @@ Owner testing of B1.2 exposed material foundation failures rather than polish pr
 - wheels placed in apparently sensible side positions could fail because their orientation was inferred from machine centroid rather than a real mounting relationship;
 - creation exposed implementation nodes/sockets and felt like a raw debug graph rather than manipulating parts in a workshop.
 
-R0 deliberately stops feature growth and visual/feedback polish while these classes of failure are removed.
+R0 deliberately stopped feature growth while these classes of failure were removed. The authority reset is now mechanically strong enough that the branch has moved into **construction-grammar discovery**: bounded experiments in how authored parts should actually be grabbed, edited and recombined before the project grows into more mechanical primitives.
 
-Development currently lives on `foundation-reset` behind draft PR #2. `main` remains the previous B1.2 checkpoint until the reset earns Owner interaction evidence.
+Development lives on `foundation-reset` behind draft PR #2. `main` remains the previous B1.2 checkpoint until the reset and interaction direction earn the remaining Owner/Quest evidence.
 
 ## Current R0 architecture
 
@@ -48,19 +48,32 @@ Structural beams carry durable roll, so a beam has a real local frame. Desktop a
 
 Internal welded nodes still exist because they are useful topology. They are no longer the primary user-facing construction grammar.
 
-With `BEAM` active:
+The established structural surface is:
 
 - create the first beam directly in a genuinely blank workshop;
-- select a real beam;
-- the selected part alone exposes contextual end handles;
-- **white MOVE handle** reshapes that beam through one of its ends;
-- **green EXTEND handle** pulls a new structural beam from that end;
-- extending near another physical beam end welds to that endpoint;
-- persistent legacy node spheres are hidden from the workshop surface.
+- select the real beam rather than public node/socket objects;
+- white endpoint handles reshape welded structure;
+- green endpoint handles pull new beams and can weld onto another physical beam end;
+- persistent legacy node spheres stay hidden.
 
 Structural edit commands operate on `beamId + end`, not public node IDs. If a shared welded endpoint moves, connected structure remains welded. If a host beam changes length, mounted components preserve their relative longitudinal anchor on that host part.
 
-Desktop pointer and XR controller paths converge into these same authored commands.
+### Experimental direct welded-island grab
+
+Current desktop candidate adds one deliberately bounded interaction experiment:
+
+> **click a beam body → select it; drag the beam body → move its entire welded rigid island in machine space.**
+
+The command translates all connected structural nodes by one machine-space delta. It does not deform the welded island, rewrite host-local component intent, or move unrelated structural islands.
+
+The drag is preview-first: hypothetical geometry is rendered while the pointer moves, but `MachineDocument` is unchanged until release. `pointercancel` discards the gesture.
+
+A real ambiguity found by the new browser gate is now explicit rather than hidden: a powered-wheel preview can overlap the same beam surface the user may want to grab. The current desktop arbitration is:
+
+- short click on the wheel ghost → commit the wheel;
+- drag through the same overlap beyond the movement threshold → take structural context and move the welded island.
+
+This behavior is **experimental, desktop-first and awaiting Owner feel evidence**. It is not yet a canonical XR gesture or a permanent design rule.
 
 ### Input ownership and transient state
 
@@ -77,89 +90,87 @@ Interaction proxies and structural handles are made pick-ready when they are syn
 
 ## Current evidence
 
-Current verified runtime checkpoint:
+Current verified construction-grammar candidate:
 
-`8095a2ab78cf2971781defa4d3b979af5d22d7bd`
+`fa8f23b71f67c7a0c872d4ff85dbd46beb058943`
 
-GitHub `Verify Riftworks` run `34971117954` (#151):
+GitHub `Verify Riftworks` run `34983007068` (#173):
 
 - dependency install: **PASS**;
-- complete Node contract/physics suite: **58/58 PASS**;
+- complete Node contract/physics/gesture suite: **67/67 PASS**;
 - production Vite build: **PASS**;
-- headless Chromium desktop mouse rehearsal: **7/7 PASS**;
-- headless Chromium + IWER immersive browser rehearsal: **18/18 PASS**.
+- real Chromium desktop mouse rehearsal: **8/8 PASS**;
+- Chromium + IWER immersive browser rehearsal: **18/18 PASS**.
 
-The desktop rehearsal executes real browser mouse events through:
+The desktop rehearsal now executes:
 
-`blank → beam-create → beam-select → beam-extend → wheel-place → direct-wheel-rehost → RUN/STOP authority`
+`blank → beam-create → beam-select → beam-extend → wheel-place → direct-island-drag → direct-wheel-rehost → RUN/STOP authority`
 
-The IWER rehearsal executes:
+The direct-island stage begins from powered-wheel context, deliberately exercises the wheel-preview/beam overlap, drags `b2`, verifies the whole welded island moves, verifies the already-mounted `c1` follows coherently through host-local intent, then continues through rehost and RUN/STOP.
+
+The IWER rehearsal remains:
 
 `blank-workshop → machine-local-authority → beam-create → part-select → beam-extend → beam-reshape → beam-context-close → ray-tool-select → surface-mount-preview → squeeze-place → direct-component-select → direct-component-rehost → contextual-wheel-edit → workspace-grab → run-workspace-isolation → run-stop-authority → beam-delete-cascade → blank-return`
 
-The suite also protects the input-boundary failures exposed while building the desktop gate:
+Important protected behavior includes:
 
-- desktop component input cannot touch XR-owned transient state;
-- desktop structural `pointercancel` cannot commit a part;
-- XR session entry cancels an outgoing desktop drag and releases its pointer capture;
-- fresh wheel/component proxies and structural handles are pickable immediately after synchronization without waiting for a render frame.
-
-Protected foundation behavior now includes:
-
-- shared visible/physical world floor authority;
+- shared visible/physical world-floor authority;
 - RUN spawn independent from workbench translation;
 - RUN/STOP cannot mutate authored truth;
-- real four-wheel contact-driven cart translation remains demonstrable;
+- contact-driven powered-cart translation remains demonstrable;
 - explicit beam-host wheel mount frames;
-- mirrored physical axle/motor semantics;
 - wheel mount stability under unrelated topology changes;
-- beam roll carrying mount orientation;
 - part-level CREATE/MOVE/EXTEND structural commands;
 - welded topology preservation during reshape;
 - mounted-component anchor adaptation during beam resize;
-- degenerate structural edits being rejected rather than corrupting truth;
-- structural targeting returning part references while deduplicating one physical welded endpoint across multiple internal beam/node aliases;
-- direct authored wheel rehosting while preserving identity and motor control;
-- desktop and XR transient input ownership isolation;
-- real browser execution of both the current desktop mouse path and the IWER controller path through RUN → STOP.
+- direct authored wheel rehosting while preserving identity;
+- desktop/XR transient input isolation;
+- direct welded-island translation preserving host-local component intent and leaving unrelated islands untouched;
+- click-vs-drag arbitration when a wheel preview and structural beam compete for the same pointer surface;
+- cancellation of direct island drag without authored mutation.
 
-Documentation commits after `8095a2a…` consolidate this evidence but do not change runtime semantics. Any later code-bearing candidate must earn a newer full gate before replacing this cited runtime checkpoint.
+## Owner evidence
 
-## Evidence that is still missing
+A first real Owner desktop recording from the non-production branch preview already demonstrated that the reset no longer reproduces the old invisible-plane / room-floor failure and that RUN/STOP preserves authored state during free-form use.
 
-Automated/browser GREEN is still not Owner or physical-hardware proof.
+That recording predates the direct welded-island grab experiment above. Therefore the current runtime candidate still needs a **small Owner feel pass**, not another broad automated campaign.
 
-Still required before R0 can replace the old checkpoint:
+The previously confirmed branch preview is:
 
-- **Owner free-form smoke** to judge whether creation actually feels less raw and whether the original terrain/wheel failure classes remain gone in normal use;
-- **human interaction evidence** for feel, target quality and confusing transitions rather than only deterministic browser choreography;
-- physical **Quest evidence** for reach, comfort, controller targeting and real-device behavior.
+`https://foundation-reset-webxr-lab.jozzpoly.workers.dev`
 
-The automated desktop rehearsal proves that the mouse interaction path executes in a real browser. IWER proves that the controller-path mechanics execute in an immersive browser session. Neither proves that those interactions feel good to a human.
+Because this repository does not contain the Worker deployment workflow, GitHub GREEN does not prove that the external preview has already advanced to the new runtime candidate. Re-establish preview freshness before judging the new gesture.
 
-## Next Owner smoke contract
+## Next Owner question
 
-The next useful run should test the loop rather than inspect implementation details:
+The next test should be qualitative and short. Build any small welded structure and answer one question:
 
-1. Start from the genuinely blank workshop. Create the first beam directly with `BEAM`.
-2. Select the beam itself. Persistent node/socket markers should not be the construction interface.
-3. Drag a white end handle and materially reshape the part.
-4. Drag a green end handle and create another beam. Try welding it to another existing beam end if convenient.
-5. Switch to `WHEEL`. Hover/approach a real beam face and verify the exact wheel candidate appears before commit.
-6. Place a wheel, select that existing wheel, drag it onto another beam face, then use `MIRROR` and `REVERSE`. The same authored component should retain its identity while its intended properties change.
-7. Build something strange if useful. The builder should diagnose rather than paternalistically forbid mechanically representable experiments.
-8. `LOAD PROVEN CART` if a known locomotion specimen is useful, then RUN.
-9. Verify the machine starts on the visible world floor, does not drive on a hidden elevated platform, and does not fall through the visible floor when leaving the old workbench footprint.
-10. STOP and verify the authored construction returns unchanged by runtime motion.
-11. Enter/leave XR if convenient and look specifically for stale ghosts, previews, stuck drags or interaction state leaking across the transition.
+> **Does grabbing a real beam body to move its whole welded island feel more like manipulating a machine, or does it create a new kind of ambiguity/frustration?**
 
-Report the **earliest broken, misleading or confusing step** instead of compensating around it. Owner free-play beyond this script is valuable evidence and is the point of the next gate.
+Useful stress case: mount/preview a wheel, then try both a short click and a deliberate drag in the same area. The current intended distinction is click = wheel commit, drag = structural grab.
 
-## Visual / feedback gate
+Report the earliest moment where intent and result disagree. Do not compensate around it.
 
-**Visual, haptic, audio and presentation polish remain intentionally BLOCKED during R0.**
+## Evidence still missing
 
-They resume only after the foundation survives Owner interaction smoke without a material creation/world/mechanics finding. That transition must be announced explicitly; it must not happen through gradual scope drift.
+Automated/browser GREEN is not human-feel or physical-hardware acceptance.
+
+Still open:
+
+- Owner judgement on the new direct structural manipulation experiment;
+- whether whole-island translation is the right unit of manipulation or only one useful gesture among several;
+- physical Quest evidence for reach, comfort, controller targeting and real-device behavior;
+- an eventual XR direct-manipulation mapping **only if** the interaction metaphor survives desktop Owner testing.
+
+## Scope lock
+
+Do not add new mechanical primitives merely because this interaction experiment is green.
+
+Do not generalize the desktop gesture into a large selection/group/manipulator framework yet.
+
+Do not copy it into XR merely for parity before Owner evidence says the metaphor is worth keeping.
+
+Visual/haptic/audio polish is still not a blanket next step. Interaction information that makes mechanical intent readable may be justified as part of construction grammar; decorative polish remains secondary.
 
 ## Local validation
 
@@ -181,7 +192,6 @@ Use `?emulate=1` to install IWER + DevUI when native immersive XR is unavailable
 - Rapier bodies/joints are runtime state, never authored identity.
 - runtime rigid-body poses are simulation-world truth.
 - Three objects, HTML, spatial UI, IWER and XR poses are presentation/input adapters.
-- desktop and XR input must converge into the same authored commands without concurrently owning the same transient interaction state.
 - inactive input adapters must be inert with respect to another adapter's preview/drag state.
 - system cancellation and session handoff cancel transient gestures; they do not silently commit authored changes.
 - placed parts/components are persistent authored objects intended to be revised directly.
