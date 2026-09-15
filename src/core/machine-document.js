@@ -35,6 +35,11 @@ function physicalEndpoint(document, target, fallbackPosition, label) {
   return { nodeId: null, position: [...fallbackPosition], reused: false };
 }
 
+function validateWheelMount(mount, label) {
+  if (!finiteVec3(mount?.position)) throw new Error(`${label} requires a finite host-local position`);
+  if (!finiteVec3(mount?.axis) || vectorLength(mount.axis) < 1e-6) throw new Error(`${label} requires a non-zero host-local axis`);
+}
+
 export function createEmptyMachine() {
   return {
     version: MACHINE_VERSION,
@@ -274,8 +279,7 @@ export function attachPoweredWheel(document, hostBeamId, options = {}) {
   assertValidMachine(document);
   if (!document.beams.some((beam) => beam.id === hostBeamId)) throw new Error(`unknown wheel host beam: ${hostBeamId}`);
   const mount = options.mount;
-  if (!finiteVec3(mount?.position)) throw new Error('powered wheel mount requires a finite host-local position');
-  if (!finiteVec3(mount?.axis) || vectorLength(mount.axis) < 1e-6) throw new Error('powered wheel mount requires a non-zero host-local axis');
+  validateWheelMount(mount, 'powered wheel mount');
 
   const next = clone(document);
   const componentId = `c${next.nextIds.component++}`;
@@ -298,6 +302,31 @@ export function attachPoweredWheel(document, hostBeamId, options = {}) {
   return assertValidMachine(next);
 }
 
+export function rehostPoweredWheel(document, componentId, hostBeamId, mount) {
+  assertValidMachine(document);
+  const current = document.components.find((component) => component.id === componentId);
+  if (!current) throw new Error(`unknown component: ${componentId}`);
+  if (current.kind !== 'powered-wheel') throw new Error(`component ${componentId} is not a powered wheel`);
+  if (!document.beams.some((beam) => beam.id === hostBeamId)) throw new Error(`unknown wheel host beam: ${hostBeamId}`);
+  validateWheelMount(mount, 'powered wheel rehost mount');
+
+  const sameHost = current.hostBeamId === hostBeamId;
+  const samePosition = current.mount.position.every((value, index) => value === mount.position[index]);
+  const normalizedAxis = normalizeVec3(mount.axis);
+  const sameAxis = current.mount.axis.every((value, index) => Math.abs(value - normalizedAxis[index]) < 1e-12);
+  if (sameHost && samePosition && sameAxis) return document;
+
+  const next = clone(document);
+  const wheel = next.components.find((component) => component.id === componentId);
+  wheel.hostBeamId = hostBeamId;
+  wheel.mount = {
+    position: [...mount.position],
+    axis: normalizedAxis,
+  };
+  next.revision += 1;
+  return assertValidMachine(next);
+}
+
 export function editPoweredWheel(document, componentId, patch = {}) {
   assertValidMachine(document);
   const current = document.components.find((component) => component.id === componentId);
@@ -312,8 +341,7 @@ export function editPoweredWheel(document, componentId, patch = {}) {
   const wheel = next.components.find((component) => component.id === componentId);
   for (const [key, value] of Object.entries(patch)) {
     if (key === 'mount') {
-      if (!finiteVec3(value?.position)) throw new Error('powered wheel mount edit requires a finite host-local position');
-      if (!finiteVec3(value?.axis) || vectorLength(value.axis) < 1e-6) throw new Error('powered wheel mount edit requires a non-zero host-local axis');
+      validateWheelMount(value, 'powered wheel mount edit');
       wheel.mount = { position: [...value.position], axis: normalizeVec3(value.axis) };
     } else {
       wheel[key] = value;
