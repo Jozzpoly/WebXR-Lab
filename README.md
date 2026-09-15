@@ -1,77 +1,128 @@
 # Riftworks
 
-Riftworks is a browser/VR engineering sandbox focused on a short creative loop:
+Riftworks is a browser/VR engineering sandbox organized around a short creative loop:
 
 > **build → run → observe → improve**
 
-The repository was rebooted in place from the former `WebXR-Lab`. Earlier Quest/WebXR work remains donor evidence that hosted immersive VR and tracked Touch interaction can run on a physical Quest 2; active architecture is Riftworks.
+The repository began as `WebXR-Lab`. Earlier Quest 2 work remains donor evidence that hosted immersive WebXR, tracked Touch controllers and trigger interaction can work on physical hardware. The active project is Riftworks.
 
-## Current target — B1 VR interaction & presentation foundation
+## Live development state — R0 foundation reset
 
-B0 proved that authored machines can compile into disposable Rapier mechanics and produce real contact-driven motion. B1 deliberately pauses new mechanical primitives and strengthens the surface through which those mechanics are understood, placed, corrected and observed in VR.
+Owner testing of B1.2 exposed material foundation failures rather than polish problems:
 
-Current B1.2 foundation:
+- a running machine could appear to drive on empty air and later fall through the visible room;
+- wheels placed in apparently sensible side positions could fail because their orientation was inferred from machine centroid rather than a real mounting relationship;
+- creation exposed implementation nodes/sockets and felt like a raw debug graph rather than manipulating parts in a workshop.
 
-- `MachineDocument` uses machine-local coordinates; placement in the room is not authored machine truth;
-- a separate `WorkspaceRoot` owns the tabletop/workbench placement in rendered world space;
-- Machine Yard was resized and moved into a human-scale direct-reach zone rather than being laid out only for a desktop camera;
-- a dedicated `GRAB WORKSPACE` rail lets XR grip translation move the whole workbench without mutating any authored machine coordinate or Rapier-local state;
-- desktop pointer hits and XR grip poses are converted world → workspace-local before authored commands;
-- immersive XR has an in-world panel for `BEAM`, `WHEEL`, `RUN/STOP` and `UNDO`; the basic loop does not depend on desktop HTML;
-- controller trigger targets spatial UI/components while grip/squeeze performs direct construction, nearby component selection or workspace manipulation;
-- powered-wheel placement now has a pre-commit ghost that exposes exact position, axle and positive motor direction before authored truth changes;
-- an existing powered wheel is selectable independently of the active creation tool; component selection takes priority over accidentally starting a beam drag;
-- selected wheels keep stable authored identity while `FLIP SIDE`, `REVERSE`, `DELETE` and `DONE` operate through immutable `MachineDocument` commands and normal Undo history;
-- the same wheel-edit semantics are surfaced through desktop contextual controls and the XR spatial panel;
-- powered-wheel BUILD presentation exposes axle intent and positive motor direction; RUN presentation remains driven only by Rapier body poses;
-- desktop `FOCUS MACHINE` and optional `FOLLOW RUN` are observation aids only and never move the XR head/camera;
-- a transparent GitHub verification workflow independently runs install → tests → production build, in addition to Cloudflare deployment checks.
+R0 deliberately stops feature growth and visual/feedback polish while these classes of failure are removed.
 
-The exact B1.2 code candidate on `ab9a75b29616254cf19d816d564e936cbd2fef88` passed both the GitHub verification job and Cloudflare Workers production deployment.
+Development currently lives on `foundation-reset` behind draft PR #2. `main` remains the previous B1.2 checkpoint until the reset earns interaction evidence.
 
-## Evidence ladder
+## Current R0 architecture
 
-- authored document + compiler semantics: **PASS**;
-- degenerate geometry rejection and beam-axis correspondence: **PASS**;
-- Rapier RUN/STOP without authored mutation: **PASS**;
-- real powered-wheel revolute motor consequence: **PASS**;
-- opposite wheel mount sides preserving one shared motor-axis meaning: **PASS**;
-- full four-wheel cart translation through wheel/floor contact: **PASS**;
-- machine-local coordinate refactor preserving the proven cart: **PASS**;
-- immutable powered-wheel edit/delete semantics with stable component identity: **PASS**;
-- production Vite bundle with spatial XR panel, workspace layer, preview and component-edit plumbing: **PASS**;
-- Cloudflare deployment of exact B1.2 code candidate `ab9a75b…`: **PASS**;
-- desktop Owner visual/interaction smoke for B1.2: **pending**;
-- IWER spatial-panel/direct-construction/preview/edit smoke: **pending**;
-- one-hand workspace translation comfort and reach: **technically implemented, ergonomics not yet proven**;
-- physical Quest ergonomics/presence: **not currently available**.
+### One world truth
 
-## B1.2 desktop Owner smoke
+Three spaces have explicit jobs:
 
-1. Open the deployed Riftworks URL and verify the page labels itself `B1.2`.
-2. Select `POWERED WHEEL` and hover a structural socket. A translucent wheel preview should appear before placement, showing the proposed axle/motor direction.
-3. Place the wheel. Click the existing wheel even after switching back to `BEAM`; it should select the component rather than start an accidental beam drag.
-4. Use `FLIP SIDE`, `REVERSE MOTOR`, then `UNDO` and verify the same wheel identity is edited rather than replaced by an unrelated component.
-5. Delete a wheel and Undo it.
-6. `LOAD PROVEN CART`, select/edit one existing wheel, then `RUN`. Motion should change because authored motor/side intent changed, not because presentation faked it.
-7. `STOP` must discard runtime motion and return to the edited authored construction exactly.
-8. Toggle `FOLLOW RUN` / `FOCUS MACHINE` only as desktop observation aids.
+1. **Machine local** — authored machine geometry and intent.
+2. **Authoring workspace** — movable presentation/input transform used to keep construction comfortable.
+3. **Simulation world** — the real Machine Yard used by Rapier and RUN visuals.
 
-The desktop smoke validates readability and interaction plumbing. It is not physical VR proof.
+The visible world floor and fixed Rapier floor now come from one `MACHINE_YARD_WORLD` descriptor. Rapier no longer owns an anonymous invisible platform. RUN resolves one explicit `runSpawn`; the exact same spawn pose is supplied to physics and rendering. Moving the workbench cannot move the simulation world.
 
-## IWER / future Quest smoke
+### Host-relative mechanical mounting
 
-With `?emulate=1` or a physical headset when available:
+`MachineDocument` v2 keeps structural topology internally, but powered wheels no longer attach to universal nodes and no longer infer orientation from the centroid of the whole machine.
 
-1. enter immersive XR;
-2. use trigger ray on the spatial panel;
-3. with `WHEEL` active, move a grip near a socket and verify the pre-placement preview appears before squeeze;
-4. squeeze to place, then point at or directly approach the existing wheel to select it;
-5. verify the panel switches to `FLIP SIDE / REVERSE / DELETE / DONE` and each action changes authored intent through the same command path as desktop;
-6. grab `GRAB WORKSPACE` and move the whole workbench while authored coordinates remain unchanged;
-7. RUN/STOP without automatic XR camera motion.
+A powered wheel now authors:
 
-IWER can validate event-path plumbing; only physical hardware can validate comfort, reach, presence and real controller feel.
+- `hostBeamId`;
+- host-local mount position;
+- host-local axle direction;
+- dimensions and mount gap;
+- signed motor intent.
+
+Structural beams carry durable roll, so a beam has a real local frame. Desktop and XR wheel placement both resolve a concrete beam surface through the same frame mathematics used by the compiler.
+
+### Part-first structural authoring
+
+Internal welded nodes still exist because they are useful topology. They are no longer the primary user-facing construction grammar.
+
+With `BEAM` active:
+
+- select a real beam;
+- the selected part alone exposes contextual end handles;
+- **white MOVE handle** reshapes that beam through one of its ends;
+- **green EXTEND handle** pulls a new structural beam from that end;
+- extending near another physical beam end welds to that endpoint;
+- persistent legacy node spheres are hidden from the workshop surface.
+
+Structural edit commands operate on `beamId + end`, not public node IDs. If a shared welded endpoint moves, connected structure remains welded. If a host beam changes length, mounted components preserve their relative longitudinal anchor on that host part.
+
+Desktop pointer and XR controller paths converge into these same authored commands.
+
+## Automated evidence
+
+Current exact R0 candidate:
+
+`6029130e0e5b1d0c45755ae0658f9f8a1bd63631`
+
+GitHub `Verify Riftworks` run `34914182165`:
+
+- dependency install: **PASS**;
+- complete Node contract/physics test suite: **PASS**;
+- production Vite build: **PASS**.
+
+Protected behavior includes:
+
+- shared visible/physical world floor authority;
+- RUN spawn independent from workbench translation;
+- RUN/STOP cannot mutate authored truth;
+- real four-wheel contact-driven cart translation remains demonstrable;
+- explicit beam-host wheel mount frames;
+- mirrored physical axle/motor semantics;
+- wheel mount stability under unrelated topology changes;
+- beam roll carrying mount orientation;
+- part-level MOVE/EXTEND structural commands;
+- welded topology preservation during reshape;
+- mounted-component anchor adaptation during beam resize;
+- degenerate structural edits being rejected rather than corrupting truth;
+- structural targeting returning part references while deduplicating one physical welded endpoint across multiple internal beam/node aliases.
+
+## Evidence that is still missing
+
+Automated GREEN is not interaction proof.
+
+Still required before R0 can replace the old checkpoint:
+
+- **desktop interaction smoke** of real beam selection, MOVE, EXTEND, wheel surface mount and RUN/STOP;
+- **IWER controller-path rehearsal** of the same part-first grammar;
+- **Owner free-form smoke** to see whether creation actually feels less raw and whether the original terrain/wheel failure classes remain gone;
+- later, physical Quest evidence for reach, comfort and real controller feel.
+
+The repository contains an updated bounded IWER rehearsal (`?emulate=1&rehearse=1`) that exercises the new part-first path, but its existence/buildability is not counted as a rehearsal PASS until it is actually executed in a browser.
+
+## Next smoke contract
+
+The next useful run should test the loop rather than inspect implementation details:
+
+1. Start from the seed beam with `BEAM` active.
+2. Select the beam itself. Persistent node/socket markers should not be the construction interface.
+3. Drag a white end handle and materially reshape the part.
+4. Drag a green end handle and create another beam. Try welding it to another existing beam end if convenient.
+5. Switch to `WHEEL`. Hover/approach a real beam face and verify the exact wheel candidate appears before commit.
+6. Place a wheel, select that existing wheel, use `MIRROR` and `REVERSE` and confirm the same authored component is edited.
+7. `LOAD PROVEN CART` if a known locomotion specimen is useful, then RUN.
+8. Verify the machine starts on the visible world floor, does not drive on a hidden elevated platform, and does not fall through the visible floor when leaving the old workbench footprint.
+9. STOP and verify the authored construction returns unchanged by runtime motion.
+
+Report the **earliest broken or confusing step** instead of compensating around it. Owner free-play beyond this script is valuable evidence.
+
+## Visual / feedback gate
+
+**Visual, haptic, audio and presentation polish remain intentionally BLOCKED during R0.**
+
+They resume only after the foundation survives interaction smoke without a material creation/world/mechanics finding. That transition must be announced explicitly; it must not happen through gradual scope drift.
 
 ## Local validation
 
@@ -82,17 +133,19 @@ npm run build
 npm run dev
 ```
 
-Add `?emulate=1` to install IWER + DevUI when no native immersive runtime is available.
+Use `?emulate=1` to install IWER + DevUI when native immersive XR is unavailable. Use `?emulate=1&rehearse=1` for the bounded automated controller-path rehearsal.
 
 ## Durable boundaries
 
 - `MachineDocument` is authored truth.
-- workspace/view transforms, component selection and previews are not machine truth.
+- internal nodes may support welded topology but are not a universal user-facing attachment API.
+- workspace/view transforms, selections, handles and previews are not machine truth.
 - compile output is disposable derived data.
 - Rapier bodies/joints are runtime state, never authored identity.
+- runtime rigid-body poses are simulation-world truth.
 - Three objects, HTML, spatial UI, IWER and XR poses are presentation/input adapters.
 - desktop and XR input must converge into the same authored commands.
-- placed components are persistent authored objects intended to be selected and revised, not fire-and-forget stamps corrected only through Undo.
+- placed parts/components are persistent authored objects intended to be revised directly.
 - artificial desktop camera following must never become automatic XR head motion.
-- hardware evidence remains distinct from desktop/IWER evidence.
-- donor projects provide patterns and evidence, not automatic architecture.
+- desktop/IWER evidence must never be promoted to physical-hardware ergonomics evidence.
+- strange but mechanically representable machines should generally be allowed to run; diagnostics inform rather than paternalistically forbid experimentation.
