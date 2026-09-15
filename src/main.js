@@ -2,12 +2,13 @@ import './style.css';
 import { attachPoweredWheel, createSeedMachine, editPoweredWheel, extendFromNode, machineFingerprint, removeComponent } from './core/machine-document.js';
 import { createPoweredCartMachine } from './core/specimens.js';
 import { compileMachine } from './runtime/compile-machine.js';
+import { MACHINE_YARD_WORLD, resolveRunSpawn } from './runtime/machine-yard-world.js';
 import { RapierMachineRuntime } from './runtime/rapier-runtime.js';
 import { RiftworksScene } from './view/scene.js';
 import { ComponentInteractionLayer } from './view/component-interaction-layer.js';
 import { attachDesktopBuilder } from './input/desktop-builder.js';
 import { attachDesktopComponents } from './input/desktop-components.js';
-import { inferPoweredWheelPlacement } from './input/wheel-placement.js';
+import { poweredWheelPlacementMatches } from './input/wheel-placement.js';
 import { installXrEmulationIfNeeded } from './xr/emulation.js';
 import { installIwerRehearsal } from './xr/rehearsal.js';
 import { setupXrConstruction } from './xr/setup-xr.js';
@@ -18,7 +19,7 @@ app.innerHTML = `
     <div id="viewport" class="viewport"></div>
     <header class="topbar">
       <div>
-        <p class="eyebrow">Riftworks · B1.2</p>
+        <p class="eyebrow">Riftworks · R0 foundation reset</p>
         <h1>Machine Yard</h1>
       </div>
       <div class="status-stack">
@@ -40,7 +41,7 @@ app.innerHTML = `
           <strong id="selectedWheelLabel">Powered Wheel</strong>
         </div>
         <div class="controls compact-controls">
-          <button id="flipWheelButton" disabled>FLIP SIDE</button>
+          <button id="flipWheelButton" disabled>MIRROR MOUNT</button>
           <button id="reverseWheelButton" disabled>REVERSE MOTOR</button>
           <button id="deleteWheelButton" disabled>DELETE</button>
           <button id="doneWheelButton" disabled>DONE</button>
@@ -66,7 +67,7 @@ app.innerHTML = `
           <span>islands <b id="islandCount">–</b></span>
         </div>
         <p class="hint"><b>Desktop:</b> LMB build/place/select · RMB orbit · Space RUN/STOP · F focus · Esc close edit.</p>
-        <p class="hint"><b>XR/IWER:</b> trigger selects spatial UI/components; grip builds, selects nearby wheels, or moves the workspace handle.</p>
+        <p class="hint"><b>XR/IWER:</b> trigger selects spatial UI/components; grip builds, mounts wheels on nearby beam surfaces, or moves the workspace handle.</p>
       </details>
       <div id="xrMount" class="xr-mount"></div>
     </aside>
@@ -151,7 +152,7 @@ function updateUi(message = null) {
 
   componentEditor.hidden = !selected;
   selectedWheelLabel.textContent = selected
-    ? `${selected.id} · axis ${selected.axis.join(',')} · side ${selected.side > 0 ? '+' : '−'} · motor ${selected.motorVelocity}`
+    ? `${selected.id} · host ${selected.hostBeamId} · axle ${selected.mount.axis.join(',')} · motor ${selected.motorVelocity}`
     : 'Powered Wheel';
   for (const button of [flipWheelButton, reverseWheelButton, deleteWheelButton, doneWheelButton]) {
     button.disabled = mode !== 'build' || !selected;
@@ -159,14 +160,14 @@ function updateUi(message = null) {
 
   truthLine.textContent = mode === 'build'
     ? (selected ? `Editing ${selected.id} · authored truth` : `Machine-local authored truth · ${tool === 'beam' ? 'Beam' : 'Powered Wheel'}`)
-    : 'Disposable Rapier runtime · authored state untouched';
+    : 'Simulation-world Rapier runtime · authored state untouched';
   detailLine.textContent = message ?? (mode === 'build'
     ? (selected
-      ? 'Edit explicit wheel intent in place. Flip side, reverse motor, delete, or finish without rebuilding topology.'
+      ? 'Edit the wheel mount in place. Mirror it across the host, reverse the motor, delete, or finish.'
       : tool === 'beam'
-        ? 'Drag from a socket. The workbench is presentation; machine coordinates stay local.'
-        : 'Hover/approach a socket to preview the exact wheel axis, side and positive motor direction before commit.')
-    : 'Desktop may follow for observation; XR head pose is never moved by the game.');
+        ? 'Drag from an endpoint handle. Beam topology remains machine-local; the workbench is only an authoring surface.'
+        : 'Hover or approach a real beam face to preview the exact host-relative wheel mount before commit.')
+    : 'RUN uses one explicit machine-local → simulation-world spawn. Desktop follow never drives the XR head.');
 
   view.updateSpatialControls({
     tool,
@@ -198,53 +199,49 @@ function commitDocument(next, message, { preserveSelection = false } = {}) {
 
 function commitExtend(startId, endPosition, targetId) {
   const next = extendFromNode(documentState, startId, endPosition, targetId);
-  commitDocument(next, targetId ? 'Connected existing sockets.' : 'Extended structure with a new socket.');
+  commitDocument(next, targetId ? 'Connected existing beam endpoints.' : 'Extended the structure with a new beam endpoint.');
 }
 
-function poweredWheelPlacement(nodeId) {
-  if (!nodeId) return null;
-  const placement = inferPoweredWheelPlacement(documentState, nodeId);
-  const duplicate = documentState.components.some((component) =>
-    component.kind === 'powered-wheel' &&
-    component.nodeId === nodeId &&
-    component.side === placement.side &&
-    component.axis.every((value, index) => value === placement.axis[index]));
-  return { placement, duplicate };
+function candidateIsDuplicate(candidate) {
+  return Boolean(candidate && documentState.components.some((component) => poweredWheelPlacementMatches(component, candidate)));
 }
 
-function previewPoweredWheel(nodeId) {
-  if (mode !== 'build' || tool !== 'powered-wheel' || selectedComponentId || !nodeId) {
+function previewPoweredWheel(candidate) {
+  if (mode !== 'build' || tool !== 'powered-wheel' || selectedComponentId || !candidate) {
     clearPoweredWheelPreview();
     return;
   }
 
-  const key = `${documentState.revision}:${nodeId}`;
+  const key = `${documentState.revision}:${candidate.hostBeamId}:${candidate.mount.position.join(',')}:${candidate.mount.axis.join(',')}:${candidate.motorVelocity}`;
   if (wheelPreviewKey === key) return;
   wheelPreviewKey = key;
 
-  const info = poweredWheelPlacement(nodeId);
-  if (!info || info.duplicate) {
+  if (candidateIsDuplicate(candidate)) {
     componentLayer.hidePreview();
     return;
   }
 
-  const hypothetical = attachPoweredWheel(documentState, nodeId, info.placement);
+  const hypothetical = attachPoweredWheel(documentState, candidate.hostBeamId, {
+    mount: candidate.mount,
+    motorVelocity: candidate.motorVelocity,
+  });
   const previewId = `c${documentState.nextIds.component}`;
   const preview = compileMachine(hypothetical).components.find((component) => component.id === previewId) ?? null;
   componentLayer.showPreview(preview);
 }
 
-function commitPoweredWheel(nodeId) {
-  if (mode !== 'build') return;
-  const info = poweredWheelPlacement(nodeId);
-  if (!info) return;
-  if (info.duplicate) {
-    updateUi('That socket already has this powered-wheel placement. Select the existing wheel to edit it.');
+function commitPoweredWheel(candidate) {
+  if (mode !== 'build' || !candidate) return;
+  if (candidateIsDuplicate(candidate)) {
+    updateUi('That beam face already has this wheel mount. Select the existing wheel to edit it.');
     return;
   }
 
-  const next = attachPoweredWheel(documentState, nodeId, info.placement);
-  commitDocument(next, `Powered wheel · axis ${info.placement.axis.join(',')} · side ${info.placement.side > 0 ? '+' : '−'}.`);
+  const next = attachPoweredWheel(documentState, candidate.hostBeamId, {
+    mount: candidate.mount,
+    motorVelocity: candidate.motorVelocity,
+  });
+  commitDocument(next, `Powered wheel mounted on ${candidate.hostBeamId} · axle ${candidate.mount.axis.join(',')} · motor ${candidate.motorVelocity}.`);
 }
 
 function selectComponent(componentId) {
@@ -254,7 +251,7 @@ function selectComponent(componentId) {
   selectedComponentId = componentId;
   clearPoweredWheelPreview();
   componentLayer.setSelected(componentId);
-  updateUi(`Selected ${componentId}. Its authored identity stays stable while intent is edited.`);
+  updateUi(`Selected ${componentId}. Its host-relative mount and identity remain authored truth.`);
 }
 
 function clearComponentSelection(message = null) {
@@ -263,6 +260,20 @@ function clearComponentSelection(message = null) {
   componentLayer.setSelected(null);
   clearPoweredWheelPreview();
   updateUi(message ?? 'Closed component editing.');
+}
+
+function mirroredWheelPatch(current) {
+  const axisLength = Math.hypot(...current.mount.axis);
+  const axis = current.mount.axis.map((value) => value / axisLength);
+  const normalDistance = current.mount.position.reduce((sum, value, index) => sum + value * axis[index], 0);
+  const position = current.mount.position.map((value, index) => value - 2 * normalDistance * axis[index]);
+  return {
+    mount: {
+      position,
+      axis: axis.map((value) => -value),
+    },
+    motorVelocity: -current.motorVelocity,
+  };
 }
 
 function editSelectedWheel(action) {
@@ -277,13 +288,13 @@ function editSelectedWheel(action) {
   if (action === 'wheel-delete') {
     const id = current.id;
     selectedComponentId = null;
-    commitDocument(removeComponent(documentState, id), `Deleted ${id}; authored topology remains unchanged.`);
+    commitDocument(removeComponent(documentState, id), `Deleted ${id}; structural topology remains unchanged.`);
     return;
   }
 
   if (action === 'wheel-flip') {
-    const next = editPoweredWheel(documentState, current.id, { side: -current.side });
-    commitDocument(next, `${current.id}: flipped mount side.`, { preserveSelection: true });
+    const next = editPoweredWheel(documentState, current.id, mirroredWheelPatch(current));
+    commitDocument(next, `${current.id}: mirrored across host beam while preserving coherent drive intent.`, { preserveSelection: true });
     return;
   }
 
@@ -310,9 +321,10 @@ function startRun() {
   componentLayer.setSelected(null);
   clearPoweredWheelPreview();
   activePlan = compileMachine(documentState);
+  const spawnPose = resolveRunSpawn(activePlan, MACHINE_YARD_WORLD);
   runFingerprint = machineFingerprint(documentState);
-  runtime.start(activePlan);
-  view.createRuntimeVisual(activePlan);
+  runtime.start(activePlan, { environment: MACHINE_YARD_WORLD, spawnPose });
+  view.createRuntimeVisual(activePlan, spawnPose);
   mode = 'run';
   view.setMode('run');
   view.setRunFollow(followRun);
@@ -327,7 +339,7 @@ function stopRun() {
   view.setMode('build');
   renderAuthored();
   updateUi(unchanged
-    ? 'STOP: evaluated motion discarded; authored machine restored exactly.'
+    ? 'STOP: simulation-world motion discarded; authored machine restored exactly.'
     : 'AUTHORITY VIOLATION: runtime changed authored truth.');
   runFingerprint = null;
 }
@@ -358,7 +370,7 @@ cartButton.addEventListener('click', () => {
   selectedComponentId = null;
   clearPoweredWheelPreview();
   renderAuthored();
-  updateUi('Loaded the exact powered cart specimen exercised by CI.');
+  updateUi('Loaded the exact beam-mounted powered cart specimen exercised by CI.');
 });
 runButton.addEventListener('click', toggleRun);
 undoButton.addEventListener('click', undoLast);
@@ -407,6 +419,7 @@ attachDesktopBuilder({
 attachDesktopComponents({
   view,
   componentLayer,
+  getDocument: () => documentState,
   isBuildMode: () => mode === 'build',
   getTool: () => tool,
   commitPoweredWheel,
@@ -451,12 +464,13 @@ followButton.disabled = false;
 beamToolButton.disabled = false;
 wheelToolButton.disabled = false;
 cartButton.disabled = false;
-updateUi('B1.2 ready: wheel intent is previewable before placement and editable after placement.');
+updateUi('R0 foundation reset: shared world truth and beam-mounted wheels are active on this candidate.');
 
 const rehearsal = installIwerRehearsal({
   emulation,
   view,
   componentLayer,
+  xrConstruction,
   getDocument: () => documentState,
   getTool: () => tool,
   getSelectedComponentId: () => selectedComponentId,
