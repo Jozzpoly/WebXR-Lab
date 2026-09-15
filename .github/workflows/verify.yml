@@ -20,3 +20,5 @@ jobs:
         run: npm test
       - name: Production build
         run: npm run build -- --emptyOutDir
+      - name: IWER browser rehearsal
+        run: node scripts/iwer-browser-smoke.mjs
