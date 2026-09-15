@@ -30,8 +30,6 @@ export function proposePoweredWheelPlacement(document, beamId, localPosition, lo
   return {
     hostBeamId: beamId,
     mount: { position, axis },
-    // The outward axle sign is physical geometry. Mirroring the signed default
-    // motor speed keeps one canonical positive rotation in the host-beam frame.
     motorVelocity: Math.abs(motorSpeed) * face.sign,
   };
 }
@@ -53,4 +51,14 @@ export function proposePoweredWheelPlacementNearPoint(document, machinePoint, { 
     };
   }
   return best;
+}
+
+export function poweredWheelPlacementMatches(component, candidate, epsilon = 1e-4) {
+  if (!component || component.kind !== 'powered-wheel' || !candidate) return false;
+  if (component.hostBeamId !== candidate.hostBeamId) return false;
+  for (let i = 0; i < 3; i += 1) {
+    if (Math.abs(component.mount.position[i] - candidate.mount.position[i]) > epsilon) return false;
+    if (Math.abs(component.mount.axis[i] - candidate.mount.axis[i]) > epsilon) return false;
+  }
+  return true;
 }
