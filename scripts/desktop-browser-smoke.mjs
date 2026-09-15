@@ -345,7 +345,7 @@ async function main() {
     await requireCanvasPoint(client, extendHandleScreen, 'extend handle');
     await requireCanvasPoint(client, extensionEndScreen, 'extend target');
     await mouseDrag(client, extendHandleScreen, extensionEndScreen);
-    await waitForUi(client, (ui) => ui.beams === 2 && ui.detail?.includes('Extended b1'), 'real mouse beam extension');
+    await waitForUi(client, (ui) => ui.beams === 2 && ui.detail?.includes('Pulled a new structural beam from b1'), 'real mouse beam extension');
     mirror = extendFromBeamEnd(mirror, 'b1', 'b', extensionEnd);
 
     await clickElement(client, '#wheelToolButton');
