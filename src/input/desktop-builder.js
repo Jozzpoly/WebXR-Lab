@@ -1,8 +1,11 @@
 import * as THREE from 'three';
+import { beamLocalToMachinePoint, getBeamFrame } from '../core/beam-frame.js';
 import { MIN_BEAM_LENGTH } from '../core/machine-document.js';
 import { nearestAuthoredHit } from './authored-picking.js';
 import { pointOnCameraFacingMachinePlane, snapMachinePoint } from './desktop-spatial-drag.js';
 import { beamEndPosition, nearestBeamEnd } from './structural-placement.js';
+
+const DIRECT_ISLAND_DRAG_THRESHOLD_PX = 6;
 
 export function attachDesktopBuilder({
   view,
@@ -15,6 +18,9 @@ export function attachDesktopBuilder({
   commitCreateBeam,
   commitMoveBeamEnd,
   commitExtendBeamEnd,
+  previewStructuralIslandTranslation = () => {},
+  clearStructuralIslandTranslationPreview = () => {},
+  commitStructuralIslandTranslation = () => {},
 }) {
   const canvas = view.renderer.domElement;
   const state = {
@@ -29,9 +35,11 @@ export function attachDesktopBuilder({
 
   const isDesktopActive = () => !view.renderer.xr.isPresenting;
   const snap = (point) => getGridEnabled() ? snapMachinePoint(point, 0.25) : point.clone();
+  const snapDelta = (delta) => getGridEnabled() ? snapMachinePoint(delta, 0.25) : delta.clone();
 
   const clearState = (pointerId = state.pointerId) => {
     view.hideGhost();
+    clearStructuralIslandTranslationPreview();
     state.operation = null;
     state.pointerId = null;
     state.dragAnchor = null;
@@ -42,8 +50,34 @@ export function attachDesktopBuilder({
     if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
   };
 
+  const updateIslandDrag = (event) => {
+    const operation = state.operation;
+    if (operation?.kind !== 'island-move' || !state.dragAnchor || !state.startPoint) return false;
+
+    const movement = Math.hypot(event.clientX - operation.startX, event.clientY - operation.startY);
+    if (!operation.active && movement < DIRECT_ISLAND_DRAG_THRESHOLD_PX) return true;
+    operation.active = true;
+
+    const point = pointOnCameraFacingMachinePlane(
+      view,
+      event.clientX,
+      event.clientY,
+      new THREE.Vector3(...state.dragAnchor),
+    );
+    if (!point) return true;
+
+    const delta = snapDelta(point.sub(new THREE.Vector3(...state.startPoint)));
+    const nextDelta = delta.toArray();
+    if (state.lastPoint?.every((value, index) => value === nextDelta[index])) return true;
+    state.lastPoint = nextDelta;
+    previewStructuralIslandTranslation(operation.beamId, nextDelta);
+    return true;
+  };
+
   const updateDrag = (event) => {
     if (!isDesktopActive() || !state.operation || !state.dragAnchor || !isBuildMode() || getTool() !== 'beam') return;
+    if (updateIslandDrag(event)) return;
+
     const point = pointOnCameraFacingMachinePlane(
       view,
       event.clientX,
@@ -109,6 +143,25 @@ export function attachDesktopBuilder({
     event.preventDefault();
   };
 
+  const beginIslandDrag = (hit, event) => {
+    const frame = getBeamFrame(getDocument(), hit.beamId);
+    const grabPoint = beamLocalToMachinePoint(frame, hit.localPosition);
+    state.operation = {
+      kind: 'island-move',
+      beamId: hit.beamId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+    };
+    state.pointerId = event.pointerId;
+    state.dragAnchor = [...grabPoint];
+    state.startPoint = [...grabPoint];
+    state.lastPoint = [0, 0, 0];
+    state.targetBeamEnd = null;
+    canvas.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
   const beginFreeCreate = (point, event) => {
     const doc = getDocument();
     const snapped = snap(point);
@@ -148,7 +201,9 @@ export function attachDesktopBuilder({
     if (authoredHit?.kind === 'component') return;
 
     if (authoredHit?.kind === 'beam') {
+      const directDrag = getTool() === 'beam';
       selectBeam(authoredHit.beamId);
+      if (directDrag) beginIslandDrag(authoredHit, event);
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
@@ -161,6 +216,18 @@ export function attachDesktopBuilder({
 
   const finish = (event, cancelled = false) => {
     if (!isDesktopActive() || state.pointerId !== event.pointerId || !state.operation) return;
+
+    if (state.operation.kind === 'island-move') {
+      const operation = state.operation;
+      const delta = state.lastPoint ? [...state.lastPoint] : [0, 0, 0];
+      clearStructuralIslandTranslationPreview();
+      const shouldCommit = !cancelled
+        && operation.active
+        && delta.some((value) => Math.abs(value) > 1e-9);
+      clearState(event.pointerId);
+      if (shouldCommit) commitStructuralIslandTranslation(operation.beamId, delta);
+      return;
+    }
 
     if (!cancelled && state.lastPoint) {
       if (state.operation.kind === 'create') {
