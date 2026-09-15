@@ -24,7 +24,7 @@ Latest runtime/evidence-bearing checkpoint:
 
 `402527936d870ed3b3fa3b7b3c2e31872d655f68`
 
-Later branch commits synchronize canonical documentation only; documentation is intentionally excluded from the runtime fingerprint.
+Current branch head may be later because canonical documentation is synchronized after verification; documentation is intentionally excluded from the runtime fingerprint. Use live Git history/PR metadata for the exact docs-only head.
 
 GitHub `Verify Riftworks` run `34997954464` (#207):
 
