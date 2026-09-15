@@ -93,6 +93,8 @@ export function setupXrConstruction({
     releaseWorkspace();
     clearPoweredWheelPreview();
     for (const hand of hands) {
+      hand.controller.visible = false;
+      hand.grip.visible = false;
       clearStructuralDrag(hand.state);
       clearComponentDrag(hand.state);
     }
@@ -195,6 +197,14 @@ export function setupXrConstruction({
     controller.addEventListener('disconnected', () => {
       controller.visible = false;
       grip.visible = false;
+      if (!view.renderer.xr.isPresenting) {
+        state.structuralDrag = null;
+        state.componentDrag = null;
+        state.lastPoint = null;
+        state.targetBeamEnd = null;
+        if (workspaceGrabHand === index) releaseWorkspace();
+        return;
+      }
       clearStructuralDrag(state);
       clearComponentDrag(state);
       if (workspaceGrabHand === index) releaseWorkspace();
@@ -202,7 +212,7 @@ export function setupXrConstruction({
     });
 
     controller.addEventListener('selectstart', () => {
-      if (workspaceGrabHand !== null) return;
+      if (!view.renderer.xr.isPresenting || workspaceGrabHand !== null) return;
       const action = view.pickSpatialAction(controller);
       if (action) {
         if (action === 'beam' || action === 'powered-wheel') selectTool(action);
@@ -225,6 +235,7 @@ export function setupXrConstruction({
     });
 
     controller.addEventListener('squeezestart', () => {
+      if (!view.renderer.xr.isPresenting) return;
       grip.updateWorldMatrix(true, false);
       grip.getWorldPosition(worldPoint);
 
@@ -308,6 +319,7 @@ export function setupXrConstruction({
     });
 
     controller.addEventListener('squeezeend', () => {
+      if (!view.renderer.xr.isPresenting) return;
       if (workspaceGrabHand === index) {
         releaseWorkspace();
         return;
