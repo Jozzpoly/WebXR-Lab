@@ -123,6 +123,19 @@ For existing beams, the current part-first surface uses contextual end operation
 
 Structural authored commands operate on part identity plus physical end semantics, not exposed node IDs.
 
+## Extensibility boundary
+
+R0 mechanics are intentionally concrete. Do not accidentally promote today's narrow implementation into the permanent ontology of Riftworks.
+
+- A **welded island** is currently a derived connected component of welded structural topology and a useful local manipulation/runtime unit. It is not an authored `Assembly` identity and should not be treated as the universal grouping model.
+- `hostBeamId` is the correct explicit mounting authority for the current powered-wheel component. It is **not** automatically the future universal attachment API for every component kind.
+- `component` currently means powered wheel in practice because R0 deliberately supports one non-structural component. Do not build a generic component framework until another real mechanical need earns the abstraction.
+- Future movable relationships such as hinges, suspension or other articulated mechanisms should be free to connect otherwise separate rigid structures through explicit authored mechanical relations rather than overloading welded topology.
+- Direct manipulation should follow physical meaning. If articulated relations are introduced later, grabbing one rigid fragment must not silently imply dragging every connected mechanism through movable joints.
+- Prefer explicit document-version evolution/migration when new authored concepts become real. Do not contort `MachineDocument` v2 fields merely to avoid a schema version change.
+
+These are negative constraints, not a predesigned future joint/assembly schema. Keep the future open until experiments earn more structure.
+
 ## Mechanical and visual causality
 
 A mechanism is not accepted because it animates correctly. Prefer tests that demonstrate solver-level consequences: relative joint motion, contact-driven translation, load response or other physical effects. Presentation must read runtime body poses rather than recreate motion independently.
