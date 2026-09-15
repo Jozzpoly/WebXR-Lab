@@ -14,12 +14,17 @@ export function nearestBeamEnd(document, point, radius = 0.16, excluded = null) 
   let best = null;
   let bestDistance = radius;
   const seenNodeIds = new Set();
+  const excludedBeam = excluded
+    ? document.beams.find((beam) => beam.id === excluded.beamId)
+    : null;
+  const excludedNodeId = excludedBeam && (excluded?.end === 'a' || excluded?.end === 'b')
+    ? excludedBeam[excluded.end]
+    : null;
 
   for (const beam of document.beams) {
     for (const end of ['a', 'b']) {
-      if (excluded?.beamId === beam.id && excluded?.end === end) continue;
       const nodeId = beam[end];
-      if (seenNodeIds.has(nodeId)) continue;
+      if (nodeId === excludedNodeId || seenNodeIds.has(nodeId)) continue;
       seenNodeIds.add(nodeId);
       const node = document.nodes.find((candidate) => candidate.id === nodeId);
       if (!node) continue;
