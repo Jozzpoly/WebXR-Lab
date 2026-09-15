@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSeedMachine, machineFingerprint } from '../src/core/machine-document.js';
+import {
+  attachPoweredWheel,
+  createSeedMachine,
+  extendFromBeamEnd,
+  machineFingerprint,
+  moveBeamEnd,
+} from '../src/core/machine-document.js';
+import { proposePoweredWheelPlacementNearPoint } from '../src/input/wheel-placement.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
 import { MACHINE_YARD_WORLD, resolveRunSpawn, surfaceTop } from '../src/runtime/machine-yard-world.js';
 import { RapierMachineRuntime } from '../src/runtime/rapier-runtime.js';
@@ -34,4 +41,40 @@ test('Rapier RUN settles on the shared visible room floor without mutating autho
 
   runtime.stop();
   assert.equal(runtime.sample().size, 0, 'STOP should discard runtime bodies');
+});
+
+test('XR rehearsal machine can enter and advance Rapier RUN without corrupting authored truth', async () => {
+  let document = createSeedMachine();
+  document = extendFromBeamEnd(document, 'b1', 'b', [0.4, 0.45, -0.45]);
+  document = moveBeamEnd(document, 'b2', 'b', [0.58, 0.45, -0.57]);
+
+  const candidate = proposePoweredWheelPlacementNearPoint(document, [0, 0.45, 0.1]);
+  assert.ok(candidate, 'rehearsal wheel probe should resolve a real host-beam face');
+  document = attachPoweredWheel(document, candidate.hostBeamId, {
+    mount: candidate.mount,
+    motorVelocity: candidate.motorVelocity,
+  });
+
+  const fingerprint = machineFingerprint(document);
+  const plan = compileMachine(document);
+  assert.equal(plan.islands.length, 1);
+  assert.equal(plan.components.length, 1);
+
+  const runtime = await RapierMachineRuntime.create();
+  const spawnPose = resolveRunSpawn(plan, MACHINE_YARD_WORLD);
+  runtime.start(plan, { environment: MACHINE_YARD_WORLD, spawnPose });
+
+  for (let i = 0; i < 24; i += 1) {
+    runtime.step(1 / 90);
+    const poses = runtime.sample();
+    assert.ok(poses.has('island-1'), 'rehearsal structure should keep a runtime island body');
+    assert.ok(poses.has('c1'), 'rehearsal powered wheel should keep a runtime body');
+    for (const pose of poses.values()) {
+      assert.ok(pose.position.every(Number.isFinite), 'runtime positions must stay finite');
+      assert.ok(pose.rotation.every(Number.isFinite), 'runtime rotations must stay finite');
+    }
+  }
+
+  assert.equal(machineFingerprint(document), fingerprint, 'rehearsal RUN must not mutate authored truth');
+  runtime.stop();
 });
