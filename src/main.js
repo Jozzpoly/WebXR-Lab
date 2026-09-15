@@ -1,11 +1,20 @@
 import './style.css';
-import { attachPoweredWheel, createSeedMachine, editPoweredWheel, extendFromNode, machineFingerprint, removeComponent } from './core/machine-document.js';
+import {
+  attachPoweredWheel,
+  createSeedMachine,
+  editPoweredWheel,
+  extendFromBeamEnd,
+  machineFingerprint,
+  moveBeamEnd,
+  removeComponent,
+} from './core/machine-document.js';
 import { createPoweredCartMachine } from './core/specimens.js';
 import { compileMachine } from './runtime/compile-machine.js';
 import { MACHINE_YARD_WORLD, resolveRunSpawn } from './runtime/machine-yard-world.js';
 import { RapierMachineRuntime } from './runtime/rapier-runtime.js';
 import { RiftworksScene } from './view/scene.js';
 import { ComponentInteractionLayer } from './view/component-interaction-layer.js';
+import { StructuralInteractionLayer } from './view/structural-interaction-layer.js';
 import { attachDesktopBuilder } from './input/desktop-builder.js';
 import { attachDesktopComponents } from './input/desktop-components.js';
 import { poweredWheelPlacementMatches } from './input/wheel-placement.js';
@@ -61,13 +70,13 @@ app.innerHTML = `
           <button id="gridButton" class="active" disabled>GRID 25 cm</button>
         </div>
         <div class="metrics">
-          <span>nodes <b id="nodeCount">–</b></span>
+          <span>internal joints <b id="nodeCount">–</b></span>
           <span>beams <b id="beamCount">–</b></span>
           <span>wheels <b id="wheelCount">–</b></span>
           <span>islands <b id="islandCount">–</b></span>
         </div>
-        <p class="hint"><b>Desktop:</b> LMB build/place/select · RMB orbit · Space RUN/STOP · F focus · Esc close edit.</p>
-        <p class="hint"><b>XR/IWER:</b> trigger selects spatial UI/components; grip builds, mounts wheels on nearby beam surfaces, or moves the workspace handle.</p>
+        <p class="hint"><b>Desktop:</b> click a beam → white end handle reshapes it · green end handle extends it · RMB orbit · Space RUN/STOP.</p>
+        <p class="hint"><b>XR/IWER:</b> trigger selects real parts/spatial controls; grip manipulates selected beam ends, mounts wheels, or moves the workspace.</p>
       </details>
       <div id="xrMount" class="xr-mount"></div>
     </aside>
@@ -103,6 +112,7 @@ const xrMount = document.querySelector('#xrMount');
 const emulation = await installXrEmulationIfNeeded();
 const view = new RiftworksScene(viewport);
 const componentLayer = new ComponentInteractionLayer(view);
+const structuralLayer = new StructuralInteractionLayer(view);
 const runtime = await RapierMachineRuntime.create();
 
 let documentState = createSeedMachine();
@@ -114,6 +124,7 @@ let followRun = true;
 let activePlan = compileMachine(documentState);
 let runFingerprint = null;
 let selectedComponentId = null;
+let selectedBeamId = null;
 let wheelPreviewKey = null;
 
 function selectedWheel() {
@@ -124,6 +135,15 @@ function selectedWheel() {
 function clearPoweredWheelPreview() {
   wheelPreviewKey = null;
   componentLayer.hidePreview();
+}
+
+function syncStructuralLayer() {
+  structuralLayer.sync(
+    documentState,
+    activePlan,
+    selectedBeamId,
+    mode === 'build' && tool === 'beam' && !selectedComponentId,
+  );
 }
 
 function updateUi(message = null) {
@@ -159,14 +179,21 @@ function updateUi(message = null) {
   }
 
   truthLine.textContent = mode === 'build'
-    ? (selected ? `Editing ${selected.id} · authored truth` : `Machine-local authored truth · ${tool === 'beam' ? 'Beam' : 'Powered Wheel'}`)
+    ? selected
+      ? `Editing ${selected.id} · authored component truth`
+      : selectedBeamId
+        ? `Selected ${selectedBeamId} · structural part`
+        : `Machine-local authored truth · ${tool === 'beam' ? 'Beam' : 'Powered Wheel'}`
     : 'Simulation-world Rapier runtime · authored state untouched';
+
   detailLine.textContent = message ?? (mode === 'build'
-    ? (selected
+    ? selected
       ? 'Edit the wheel mount in place. Mirror it across the host, reverse the motor, delete, or finish.'
-      : tool === 'beam'
-        ? 'Drag from an endpoint handle. Beam topology remains machine-local; the workbench is only an authoring surface.'
-        : 'Hover or approach a real beam face to preview the exact host-relative wheel mount before commit.')
+      : selectedBeamId && tool === 'beam'
+        ? 'White handle reshapes this beam end. Green handle pulls a new beam from this part. Internal joints stay hidden topology.'
+        : tool === 'beam'
+          ? 'Select a real beam first. Its contextual part handles appear only while that beam is selected.'
+          : 'Hover or approach a real beam face to preview the exact host-relative wheel mount before commit.'
     : 'RUN uses one explicit machine-local → simulation-world spawn. Desktop follow never drives the XR head.');
 
   view.updateSpatialControls({
@@ -174,32 +201,63 @@ function updateUi(message = null) {
     mode,
     canUndo: mode === 'build' && history.length > 0,
     selectedComponentId: selected?.id ?? null,
+    selectedBeamId,
   });
 }
 
 function renderAuthored() {
   activePlan = compileMachine(documentState);
-  view.renderAuthored(documentState, activePlan);
-  componentLayer.sync(activePlan);
   if (selectedComponentId && !documentState.components.some((component) => component.id === selectedComponentId)) {
     selectedComponentId = null;
   }
+  if (selectedBeamId && !documentState.beams.some((beam) => beam.id === selectedBeamId)) {
+    selectedBeamId = null;
+  }
+  view.renderAuthored(documentState, activePlan);
+  componentLayer.sync(activePlan);
   componentLayer.setSelected(selectedComponentId);
+  syncStructuralLayer();
 }
 
-function commitDocument(next, message, { preserveSelection = false } = {}) {
-  if (next === documentState || mode !== 'build') return;
+function commitDocument(next, message, {
+  preserveComponentSelection = false,
+  preserveBeamSelection = false,
+} = {}) {
+  if (next === documentState || mode !== 'build') return false;
   history.push(documentState);
   documentState = next;
-  if (!preserveSelection) selectedComponentId = null;
+  if (!preserveComponentSelection) selectedComponentId = null;
+  if (!preserveBeamSelection) selectedBeamId = null;
   clearPoweredWheelPreview();
   renderAuthored();
   updateUi(message);
+  return true;
 }
 
-function commitExtend(startId, endPosition, targetId) {
-  const next = extendFromNode(documentState, startId, endPosition, targetId);
-  commitDocument(next, targetId ? 'Connected existing beam endpoints.' : 'Extended the structure with a new beam endpoint.');
+function commitMoveBeamEnd(beamId, end, position) {
+  const next = moveBeamEnd(documentState, beamId, end, position);
+  if (next === documentState) {
+    updateUi('Beam reshape rejected: that move would create degenerate structural geometry.');
+    return;
+  }
+  selectedBeamId = beamId;
+  commitDocument(next, `Reshaped ${beamId} from its ${end.toUpperCase()} end. Mounted parts followed the host part.`, {
+    preserveBeamSelection: true,
+  });
+}
+
+function commitExtendBeamEnd(beamId, end, position, targetBeamEnd = null) {
+  const next = extendFromBeamEnd(documentState, beamId, end, position, targetBeamEnd);
+  if (next === documentState) {
+    updateUi('Beam extension produced no valid new structural part.');
+    return;
+  }
+  selectedBeamId = beamId;
+  commitDocument(next, targetBeamEnd
+    ? `Extended ${beamId} and welded the new member to another real beam end.`
+    : `Pulled a new structural beam from ${beamId}.`, {
+    preserveBeamSelection: true,
+  });
 }
 
 function candidateIsDuplicate(candidate) {
@@ -244,10 +302,29 @@ function commitPoweredWheel(candidate) {
   commitDocument(next, `Powered wheel mounted on ${candidate.hostBeamId} · axle ${candidate.mount.axis.join(',')} · motor ${candidate.motorVelocity}.`);
 }
 
+function selectBeam(beamId) {
+  if (mode !== 'build' || tool !== 'beam' || !documentState.beams.some((beam) => beam.id === beamId)) return;
+  selectedComponentId = null;
+  componentLayer.setSelected(null);
+  clearPoweredWheelPreview();
+  selectedBeamId = beamId;
+  syncStructuralLayer();
+  updateUi(`Selected ${beamId}. Manipulate the part through its contextual end handles.`);
+}
+
+function clearBeamSelection(message = null) {
+  if (!selectedBeamId) return;
+  selectedBeamId = null;
+  syncStructuralLayer();
+  updateUi(message ?? 'Closed structural part selection.');
+}
+
 function selectComponent(componentId) {
   if (mode !== 'build') return;
   const component = documentState.components.find((candidate) => candidate.id === componentId);
   if (!component || component.kind !== 'powered-wheel') return;
+  selectedBeamId = null;
+  syncStructuralLayer();
   selectedComponentId = componentId;
   clearPoweredWheelPreview();
   componentLayer.setSelected(componentId);
@@ -259,6 +336,7 @@ function clearComponentSelection(message = null) {
   selectedComponentId = null;
   componentLayer.setSelected(null);
   clearPoweredWheelPreview();
+  syncStructuralLayer();
   updateUi(message ?? 'Closed component editing.');
 }
 
@@ -294,33 +372,41 @@ function editSelectedWheel(action) {
 
   if (action === 'wheel-flip') {
     const next = editPoweredWheel(documentState, current.id, mirroredWheelPatch(current));
-    commitDocument(next, `${current.id}: mirrored across host beam while preserving coherent drive intent.`, { preserveSelection: true });
+    commitDocument(next, `${current.id}: mirrored across host beam while preserving coherent drive intent.`, {
+      preserveComponentSelection: true,
+    });
     return;
   }
 
   if (action === 'wheel-reverse') {
     const nextVelocity = current.motorVelocity === 0 ? 8 : -current.motorVelocity;
     const next = editPoweredWheel(documentState, current.id, { motorVelocity: nextVelocity });
-    commitDocument(next, `${current.id}: reversed motor direction to ${nextVelocity}.`, { preserveSelection: true });
+    commitDocument(next, `${current.id}: reversed motor direction to ${nextVelocity}.`, {
+      preserveComponentSelection: true,
+    });
   }
 }
 
 function selectTool(nextTool) {
   if (mode !== 'build') return;
   selectedComponentId = null;
+  selectedBeamId = null;
   componentLayer.setSelected(null);
   clearPoweredWheelPreview();
   tool = nextTool;
   view.hideGhost();
+  syncStructuralLayer();
   updateUi();
 }
 
 function startRun() {
   if (mode !== 'build') return;
   selectedComponentId = null;
+  selectedBeamId = null;
   componentLayer.setSelected(null);
   clearPoweredWheelPreview();
   activePlan = compileMachine(documentState);
+  syncStructuralLayer();
   const spawnPose = resolveRunSpawn(activePlan, MACHINE_YARD_WORLD);
   runFingerprint = machineFingerprint(documentState);
   runtime.start(activePlan, { environment: MACHINE_YARD_WORLD, spawnPose });
@@ -352,6 +438,7 @@ function undoLast() {
   if (mode !== 'build' || history.length === 0) return;
   documentState = history.pop();
   selectedComponentId = null;
+  selectedBeamId = null;
   clearPoweredWheelPreview();
   renderAuthored();
   updateUi('Undid the last authored construction/edit command.');
@@ -368,6 +455,7 @@ cartButton.addEventListener('click', () => {
   history.push(documentState);
   documentState = createPoweredCartMachine();
   selectedComponentId = null;
+  selectedBeamId = null;
   clearPoweredWheelPreview();
   renderAuthored();
   updateUi('Loaded the exact beam-mounted powered cart specimen exercised by CI.');
@@ -385,6 +473,7 @@ resetButton.addEventListener('click', () => {
   history.push(documentState);
   documentState = createSeedMachine();
   selectedComponentId = null;
+  selectedBeamId = null;
   clearPoweredWheelPreview();
   renderAuthored();
   updateUi('Reset to the machine-local seed structure.');
@@ -402,7 +491,10 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault();
     toggleRun();
   }
-  if (!event.repeat && event.code === 'Escape') clearComponentSelection();
+  if (!event.repeat && event.code === 'Escape') {
+    if (selectedComponentId) clearComponentSelection();
+    else clearBeamSelection();
+  }
   if (!event.repeat && event.code === 'KeyF' && mode === 'run') view.focusRuntimeNow();
   if (!event.repeat && event.code === 'Digit1') selectTool('beam');
   if (!event.repeat && event.code === 'Digit2') selectTool('powered-wheel');
@@ -410,11 +502,15 @@ window.addEventListener('keydown', (event) => {
 
 attachDesktopBuilder({
   view,
+  structuralLayer,
   getDocument: () => documentState,
   isBuildMode: () => mode === 'build',
-  commitExtend,
   getGridEnabled: () => gridEnabled,
   getTool: () => tool,
+  selectBeam,
+  clearBeamSelection,
+  commitMoveBeamEnd,
+  commitExtendBeamEnd,
 });
 attachDesktopComponents({
   view,
@@ -434,14 +530,19 @@ view.setMode('build');
 const xrConstruction = setupXrConstruction({
   view,
   componentLayer,
+  structuralLayer,
   getDocument: () => documentState,
   isBuildMode: () => mode === 'build',
   getTool: () => tool,
   getSelectedComponentId: () => selectedComponentId,
-  commitExtend,
+  getSelectedBeamId: () => selectedBeamId,
+  commitMoveBeamEnd,
+  commitExtendBeamEnd,
   commitPoweredWheel,
   previewPoweredWheel,
   clearPoweredWheelPreview,
+  selectBeam,
+  clearBeamSelection,
   selectComponent,
   editSelectedWheel,
   selectTool,
@@ -464,16 +565,18 @@ followButton.disabled = false;
 beamToolButton.disabled = false;
 wheelToolButton.disabled = false;
 cartButton.disabled = false;
-updateUi('R0 foundation reset: shared world truth and beam-mounted wheels are active on this candidate.');
+updateUi('R0 foundation reset: part-first beam editing and beam-mounted wheels are active on this candidate.');
 
 const rehearsal = installIwerRehearsal({
   emulation,
   view,
   componentLayer,
+  structuralLayer,
   xrConstruction,
   getDocument: () => documentState,
   getTool: () => tool,
   getSelectedComponentId: () => selectedComponentId,
+  getSelectedBeamId: () => selectedBeamId,
   getMode: () => mode,
   report: (message) => { detailLine.textContent = message; },
 });
