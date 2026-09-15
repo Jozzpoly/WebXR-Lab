@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attachPoweredWheel, createSeedMachine, machineFingerprint } from '../src/core/machine-document.js';
+import { attachPoweredWheel, machineFingerprint } from '../src/core/machine-document.js';
 import { compileMachine } from '../src/runtime/compile-machine.js';
 import { RapierMachineRuntime } from '../src/runtime/rapier-runtime.js';
+import { createSingleBeamMachine } from './helpers/machine-fixtures.js';
 
 const axisComponent = (v, axis) => v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2];
 const elevatedRuntimeSpawn = Object.freeze({ position: [0, 1.5, 0], rotation: [0, 0, 0, 1] });
 const mount = (z, axisZ) => ({ position: [0, 0, z], axis: [0, 0, axisZ] });
 
 test('powered wheel creates a real revolute motor consequence without authored mutation', async () => {
-  const document = attachPoweredWheel(createSeedMachine(), 'b1', {
+  const document = attachPoweredWheel(createSingleBeamMachine(), 'b1', {
     mount: mount(0.06, 1),
     motorVelocity: 8,
     motorDamping: 2.0,
@@ -43,7 +44,7 @@ test('powered wheel creates a real revolute motor consequence without authored m
 });
 
 test('mirrored mounts keep physical axle signs explicit and can author coherent motor rotation', async () => {
-  let document = createSeedMachine();
+  let document = createSingleBeamMachine();
   document = attachPoweredWheel(document, 'b1', {
     mount: mount(-0.06, -1),
     motorVelocity: -7,
