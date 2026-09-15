@@ -19,7 +19,7 @@ export async function installXrEmulationIfNeeded() {
     import('@iwer/devui'),
   ]);
   const device = new XRDevice(metaQuest3);
-  device.installRuntime();
+  device.installRuntime({ forceInstall: true });
   const devui = new DevUI(device);
   return { mode: 'iwer', device, devui };
 }
