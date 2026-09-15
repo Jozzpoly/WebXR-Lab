@@ -141,14 +141,18 @@ export function installIwerRehearsal({
       requireState(extension, 'new structural beam identity missing');
       const extensionA = beamEndPosition(getDocument(), extension.id, 'a');
       const extensionB = beamEndPosition(getDocument(), extension.id, 'b');
-      const extensionCenter = toWorld([
-        (extensionA[0] + extensionB[0]) * 0.5,
-        (extensionA[1] + extensionB[1]) * 0.5,
-        (extensionA[2] + extensionB[2]) * 0.5,
+      const extensionVisiblePoint = toWorld([
+        extensionA[0] + (extensionB[0] - extensionA[0]) * 0.75,
+        extensionA[1] + (extensionB[1] - extensionA[1]) * 0.75,
+        extensionA[2] + (extensionB[2] - extensionA[2]) * 0.75,
       ]);
-      await setPose(view, device, controller, rayOrigin, extensionCenter);
+      // Approach the new member from its open side. A ray from the original
+      // front-of-workbench pose legitimately hits the parent beam first near
+      // the welded junction; the rehearsal must not require through-object picking.
+      const partRayOrigin = toWorld([0.75, 0.70, -0.20]);
+      await setPose(view, device, controller, partRayOrigin, extensionVisiblePoint);
       await pulse(view, device, controller, TRIGGER);
-      requireState(getSelectedBeamId() === extension.id, 'new beam could not be selected as a real part');
+      requireState(getSelectedBeamId() === extension.id, 'new beam could not be selected from a visible surface');
 
       const moveHandle = { kind: 'move', beamId: extension.id, end: 'b' };
       const moveFrom = xrConstruction.getBeamHandleWorldPosition(moveHandle, new THREE.Vector3());
