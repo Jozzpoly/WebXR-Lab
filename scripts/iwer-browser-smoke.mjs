@@ -114,9 +114,7 @@ class CdpClient {
       awaitPromise,
       returnByValue,
     });
-    if (result.exceptionDetails) {
-      throw new Error(result.exceptionDetails.text ?? 'Runtime.evaluate failed');
-    }
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? 'Runtime.evaluate failed');
     return result.result?.value;
   }
 
@@ -142,6 +140,7 @@ async function main() {
     `--user-data-dir=${profile}`,
     '--window-size=1280,900',
     '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
     '--enable-webgl',
     '--ignore-gpu-blocklist',
     'about:blank',
@@ -181,6 +180,29 @@ async function main() {
       await wait(200);
     }
     if (!rect?.width || !rect?.height) throw new Error('XR entry button did not become interactive');
+
+    const preflight = await client.evaluate(`(async () => {
+      const canvas = document.querySelector('canvas');
+      let supported = null;
+      let supportError = null;
+      try {
+        supported = await navigator.xr?.isSessionSupported?.('immersive-vr') ?? null;
+      } catch (error) {
+        supportError = error?.message ?? String(error);
+      }
+      return {
+        button: document.querySelector('.xr-entry')?.textContent ?? null,
+        navigatorXr: Boolean(navigator.xr),
+        supported,
+        supportError,
+        webgl: Boolean(canvas?.getContext('webgl') || canvas?.getContext('webgl2')),
+        status: document.body.innerText.slice(-600),
+      };
+    })()`);
+    console.log(`IWER browser preflight: ${JSON.stringify(preflight)}`);
+    if (preflight.supported !== true || String(preflight.button).includes('NOT SUPPORTED')) {
+      throw new Error(`Headless IWER does not expose immersive-vr support: ${JSON.stringify(preflight)}`);
+    }
 
     const x = rect.x + rect.width * 0.5;
     const y = rect.y + rect.height * 0.5;
