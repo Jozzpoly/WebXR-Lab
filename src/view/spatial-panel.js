@@ -97,7 +97,7 @@ export class SpatialToolPanel {
     const editMode = mode === 'build' && Boolean(selectedComponentId);
     const definitions = editMode
       ? [
-          ['wheel-flip', 'FLIP SIDE'],
+          ['wheel-flip', 'MIRROR'],
           ['wheel-reverse', 'REVERSE'],
           ['wheel-delete', 'DELETE'],
           ['wheel-done', 'DONE'],
