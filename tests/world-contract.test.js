@@ -39,6 +39,16 @@ test('room-floor descriptor has matching semantic and physical extents', () => {
   const floor = MACHINE_YARD_WORLD.surfaces.find((surface) => surface.id === 'room-floor');
   assert.equal(floor.shape, 'box');
   assert.deepEqual(floor.center, [0, -0.08, 0]);
-  assert.deepEqual(floor.halfExtents, [7, 0.08, 7]);
+  assert.deepEqual(floor.halfExtents, [30, 0.08, 30]);
   assert.equal(surfaceTop(floor), 0);
+});
+
+test('normal machine-yard runs do not begin near a world edge', () => {
+  const floor = MACHINE_YARD_WORLD.surfaces.find((surface) => surface.id === 'room-floor');
+  const [targetX, , targetZ] = MACHINE_YARD_WORLD.runTarget;
+  const marginX = floor.halfExtents[0] - Math.abs(targetX - floor.center[0]);
+  const marginZ = floor.halfExtents[2] - Math.abs(targetZ - floor.center[2]);
+
+  assert.ok(marginX >= 25, `run target should have a generous X test envelope, got ${marginX} m`);
+  assert.ok(marginZ >= 25, `run target should have a generous Z test envelope, got ${marginZ} m`);
 });
