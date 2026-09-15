@@ -24,10 +24,12 @@ function createPreviewShape(component) {
 
   const tire = new THREE.Mesh(tireGeometry, previewMaterial);
   tire.scale.set(component.radius, component.width, component.radius);
+  tire.userData.wheelPreviewTarget = true;
   shape.add(tire);
 
   const hub = new THREE.Mesh(hubGeometry, previewHubMaterial);
   hub.scale.set(component.radius * 0.34, component.width * 1.18, component.radius * 0.34);
+  hub.userData.wheelPreviewTarget = true;
   shape.add(hub);
 
   const axis = new THREE.ArrowHelper(
@@ -107,6 +109,13 @@ export class ComponentInteractionLayer {
 
   pickPointer(clientX, clientY) {
     return this.pickPointerHit(clientX, clientY)?.componentId ?? null;
+  }
+
+  pickPreviewPointer(clientX, clientY) {
+    if (!this.previewRoot.visible) return false;
+    this.#pointerRay(clientX, clientY);
+    const hits = this.raycaster.intersectObject(this.previewRoot, true);
+    return hits.some((hit) => hit.object.userData.wheelPreviewTarget === true);
   }
 
   pickControllerHit(controller) {
