@@ -96,30 +96,43 @@ The fingerprint tracks runtime-bearing source/config plus the committed dependen
 
 `package-lock.json` is committed and Verify installs through `npm ci` under Node `22.16.0`, so the current CI lane uses the exact reviewed dependency graph rather than resolving fresh transitive versions on every run.
 
+The Verify workflow also performs a **non-blocking public branch-preview attribution probe** after core/browser/IWER verification. It fetches the public Workers preview and its JavaScript bundle and compares the exposed runtime fingerprint against the candidate built by the same run. A deployment miss does not falsify repo correctness; it is reported separately as deployment attribution `UNPROVEN`.
+
 ## Current evidence
 
-Latest full verified runtime/evidence checkpoint:
+Latest full verified branch/evidence checkpoint:
 
-`bee505d54bce907591ad70c50e92b0da51a83bb1`
+`508c42b203197441cc0f95eb5ff13e8b26066277`
 
-GitHub `Verify Riftworks` run `34990025803` (#192):
+GitHub `Verify Riftworks` run `34994082702` (#196):
 
 - committed dependency lock + `npm ci`: **PASS**;
 - complete Node contract/physics/gesture/evidence suite: **70/70 PASS**;
 - production Vite build: **PASS**;
 - production runtime-fingerprint verification: **PASS**;
 - real Chromium desktop mouse rehearsal: **8/8 PASS**;
-- Chromium + IWER immersive browser rehearsal: **18/18 PASS**.
+- Chromium + IWER immersive browser rehearsal: **18/18 PASS**;
+- public branch-preview attribution: **PASS**.
+
+Latest runtime/reproducibility-bearing checkpoint:
+
+`bee505d54bce907591ad70c50e92b0da51a83bb1`
 
 Verified runtime fingerprint:
 
 `b2479b60ad18`
 
+The #196 GitHub runner independently fetched:
+
+`https://foundation-reset-webxr-lab.jozzpoly.workers.dev`
+
+and proved that the public preview serves the exact same `b2479b60ad18` runtime fingerprint built and verified by the run.
+
 The interaction-bearing direct-grab checkpoint remains:
 
 `fa8f23b71f67c7a0c872d4ff85dbd46beb058943`
 
-Later commits through the verified checkpoint add attribution/reproducibility infrastructure and do not change the direct-grab gameplay semantics.
+Later commits add attribution/reproducibility/canonical-evidence infrastructure and documentation; they do not change the direct-grab gameplay semantics or runtime fingerprint.
 
 The desktop rehearsal executes:
 
@@ -147,7 +160,8 @@ Important protected behavior includes:
 - direct welded-island translation preserving host-local component intent and leaving unrelated islands untouched;
 - click-vs-drag arbitration when a wheel preview and structural beam compete for the same pointer surface;
 - cancellation of direct island drag without authored mutation;
-- deterministic runtime attribution and locked CI dependency installation.
+- deterministic runtime attribution and locked CI dependency installation;
+- automated separation of repo correctness from public deployment freshness.
 
 ## Owner evidence
 
@@ -159,15 +173,11 @@ The branch preview is:
 
 `https://foundation-reset-webxr-lab.jozzpoly.workers.dev`
 
-Because this repository does not contain the Worker deployment workflow, GitHub GREEN does not prove that the external preview has advanced to the latest candidate. The runtime badge now makes freshness explicit:
-
-> Treat a new Owner run as evidence for the current verified candidate only when the deployed UI visibly shows **`RUNTIME b2479b60ad18`**.
-
-A different ID means a different runtime and must not be conflated with run #192 evidence.
+For the current candidate, deployment freshness is no longer an open manual prerequisite: Verify #196 independently proved that this public preview serves **`RUNTIME b2479b60ad18`**. The visible badge remains useful as a quick forensic check if deployment state changes later, but the Owner does not need to re-establish attribution before this specific feel pass.
 
 ## Next Owner question
 
-The next test should be qualitative and short. Once the preview shows `RUNTIME b2479b60ad18`, build any small welded structure and answer one question:
+The next test should be qualitative and short. Build any small welded structure on the verified branch preview and answer one question:
 
 > **Does grabbing a real beam body to move its whole welded island feel more like manipulating a machine, or does it create a new kind of ambiguity/frustration?**
 
@@ -221,4 +231,5 @@ Use `?emulate=1` to install IWER + DevUI when native immersive XR is unavailable
 - placed parts/components are persistent authored objects intended to be revised directly.
 - artificial desktop camera following must never become automatic XR head motion.
 - desktop/IWER evidence must never be promoted to physical-hardware ergonomics evidence.
+- GitHub repo correctness and public deployment freshness are separate evidence gates even when the same workflow observes both.
 - strange but mechanically representable machines should generally be allowed to run; diagnostics inform rather than paternalistically forbid experimentation.
