@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { MIN_BEAM_LENGTH } from '../core/machine-document.js';
 import { nearestAuthoredHit } from './authored-picking.js';
+import { pointOnCameraFacingWorkspacePlane, snapWorkspacePoint } from './desktop-spatial-drag.js';
 import { beamEndPosition, nearestBeamEnd } from './structural-placement.js';
-import { BUILD_Y } from '../view/scene.js';
 
 export function attachDesktopBuilder({
   view,
@@ -20,26 +20,20 @@ export function attachDesktopBuilder({
   const state = {
     operation: null,
     pointerId: null,
+    dragAnchor: null,
     startPoint: null,
     startTargetBeamEnd: null,
     lastPoint: null,
     targetBeamEnd: null,
   };
 
-  const snap = (point) => {
-    if (!getGridEnabled()) return point;
-    const size = 0.25;
-    return new THREE.Vector3(
-      Math.round(point.x / size) * size,
-      BUILD_Y,
-      Math.round(point.z / size) * size,
-    );
-  };
+  const snap = (point) => getGridEnabled() ? snapWorkspacePoint(point, 0.25) : point.clone();
 
   const clearState = (pointerId = state.pointerId) => {
     view.hideGhost();
     state.operation = null;
     state.pointerId = null;
+    state.dragAnchor = null;
     state.startPoint = null;
     state.startTargetBeamEnd = null;
     state.lastPoint = null;
@@ -48,8 +42,13 @@ export function attachDesktopBuilder({
   };
 
   const updateDrag = (event) => {
-    if (!state.operation || !isBuildMode() || getTool() !== 'beam') return;
-    const point = view.pointOnBuildPlane(event.clientX, event.clientY);
+    if (!state.operation || !state.dragAnchor || !isBuildMode() || getTool() !== 'beam') return;
+    const point = pointOnCameraFacingWorkspacePlane(
+      view,
+      event.clientX,
+      event.clientY,
+      new THREE.Vector3(...state.dragAnchor),
+    );
     if (!point) return;
 
     const doc = getDocument();
@@ -97,8 +96,11 @@ export function attachDesktopBuilder({
   };
 
   const beginHandleDrag = (handle, event) => {
+    const anchor = beamEndPosition(getDocument(), handle.beamId, handle.end);
+    if (!anchor) return;
     state.operation = { kind: 'handle', handle };
     state.pointerId = event.pointerId;
+    state.dragAnchor = [...anchor];
     state.lastPoint = null;
     state.targetBeamEnd = null;
     canvas.setPointerCapture(event.pointerId);
@@ -112,6 +114,7 @@ export function attachDesktopBuilder({
     const target = nearestBeamEnd(doc, snapped.toArray(), 0.16);
     state.startTargetBeamEnd = target ? { beamId: target.beamId, end: target.end } : null;
     state.startPoint = target ? [...target.position] : snapped.toArray();
+    state.dragAnchor = [...state.startPoint];
     state.operation = { kind: 'create' };
     state.pointerId = event.pointerId;
     state.lastPoint = [...state.startPoint];
