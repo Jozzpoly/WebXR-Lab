@@ -16,7 +16,7 @@ Owner testing of B1.2 exposed material foundation failures rather than polish pr
 
 R0 deliberately stops feature growth and visual/feedback polish while these classes of failure are removed.
 
-Development currently lives on `foundation-reset` behind draft PR #2. `main` remains the previous B1.2 checkpoint until the reset earns interaction evidence.
+Development currently lives on `foundation-reset` behind draft PR #2. `main` remains the previous B1.2 checkpoint until the reset earns Owner interaction evidence.
 
 ## Current R0 architecture
 
@@ -61,19 +61,26 @@ Structural edit commands operate on `beamId + end`, not public node IDs. If a sh
 
 Desktop pointer and XR controller paths converge into these same authored commands.
 
-## Automated evidence
+## Current evidence
 
 Current exact R0 candidate:
 
-`6029130e0e5b1d0c45755ae0658f9f8a1bd63631`
+`d5c9d68cbe9db7416150f71c1b2be27359f24a83`
 
-GitHub `Verify Riftworks` run `34914182165`:
+GitHub `Verify Riftworks` run `34915422369`:
 
 - dependency install: **PASS**;
-- complete Node contract/physics test suite: **PASS**;
-- production Vite build: **PASS**.
+- complete Node contract/physics suite: **38/38 PASS**;
+- production Vite build: **PASS**;
+- headless Chromium + IWER immersive browser rehearsal: **11/11 PASS**.
 
-Protected behavior includes:
+The browser rehearsal executed this controller-path sequence rather than only compiling it:
+
+`fresh-build → part-select → beam-extend → beam-reshape → ray-tool-select → surface-mount-preview → squeeze-place → direct-component-select → contextual-wheel-edit → workspace-grab → run-stop-authority`
+
+The suite also contains a regression test reproducing the machine authored by that rehearsal — two edited beams plus the mounted powered wheel — and advances it through Rapier RUN while preserving authored truth.
+
+Protected behavior now includes:
 
 - shared visible/physical world floor authority;
 - RUN spawn independent from workbench translation;
@@ -87,22 +94,22 @@ Protected behavior includes:
 - welded topology preservation during reshape;
 - mounted-component anchor adaptation during beam resize;
 - degenerate structural edits being rejected rather than corrupting truth;
-- structural targeting returning part references while deduplicating one physical welded endpoint across multiple internal beam/node aliases.
+- structural targeting returning part references while deduplicating one physical welded endpoint across multiple internal beam/node aliases;
+- real browser/IWER execution of the current part-first controller path through RUN → STOP.
 
 ## Evidence that is still missing
 
-Automated GREEN is not interaction proof.
+Automated/browser GREEN is still not Owner or physical-hardware proof.
 
 Still required before R0 can replace the old checkpoint:
 
-- **desktop interaction smoke** of real beam selection, MOVE, EXTEND, wheel surface mount and RUN/STOP;
-- **IWER controller-path rehearsal** of the same part-first grammar;
-- **Owner free-form smoke** to see whether creation actually feels less raw and whether the original terrain/wheel failure classes remain gone;
-- later, physical Quest evidence for reach, comfort and real controller feel.
+- **Owner free-form smoke** to judge whether creation actually feels less raw and whether the original terrain/wheel failure classes remain gone in normal use;
+- a short **desktop human interaction smoke** if the Owner exercises the mouse path before merge;
+- physical **Quest evidence** for reach, comfort, controller targeting and real device behavior.
 
-The repository contains an updated bounded IWER rehearsal (`?emulate=1&rehearse=1`) that exercises the new part-first path, but its existence/buildability is not counted as a rehearsal PASS until it is actually executed in a browser.
+IWER browser evidence proves the authored interaction path can execute in a real browser session. It does **not** prove physical ergonomics, comfort, target size, reachability or Quest-specific behavior.
 
-## Next smoke contract
+## Next Owner smoke contract
 
 The next useful run should test the loop rather than inspect implementation details:
 
@@ -116,13 +123,13 @@ The next useful run should test the loop rather than inspect implementation deta
 8. Verify the machine starts on the visible world floor, does not drive on a hidden elevated platform, and does not fall through the visible floor when leaving the old workbench footprint.
 9. STOP and verify the authored construction returns unchanged by runtime motion.
 
-Report the **earliest broken or confusing step** instead of compensating around it. Owner free-play beyond this script is valuable evidence.
+Report the **earliest broken or confusing step** instead of compensating around it. Owner free-play beyond this script is valuable evidence and is the point of the next gate.
 
 ## Visual / feedback gate
 
 **Visual, haptic, audio and presentation polish remain intentionally BLOCKED during R0.**
 
-They resume only after the foundation survives interaction smoke without a material creation/world/mechanics finding. That transition must be announced explicitly; it must not happen through gradual scope drift.
+They resume only after the foundation survives Owner interaction smoke without a material creation/world/mechanics finding. That transition must be announced explicitly; it must not happen through gradual scope drift.
 
 ## Local validation
 
