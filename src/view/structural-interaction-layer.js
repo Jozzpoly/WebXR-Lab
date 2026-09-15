@@ -47,6 +47,8 @@ export class StructuralInteractionLayer {
   }
 
   sync(document, plan, selectedBeamId, enabled = true) {
+    for (const mesh of this.view.nodeMeshes?.values?.() ?? []) mesh.visible = false;
+
     this.handles.clear();
     this.targets = [];
     this.selectedBeamId = enabled ? selectedBeamId : null;
