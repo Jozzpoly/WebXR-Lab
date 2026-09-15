@@ -1,6 +1,6 @@
 # Riftworks operating rules
 
-Riftworks is a VR-first engineering sandbox with desktop-first validation while physical headset access is unavailable.
+Riftworks is a VR-first engineering sandbox. When physical headset access is unavailable, development continues through the strongest honest evidence available: desktop interaction, core/runtime tests, adversarial state-machine checks, browser automation and IWER. Lack of current headset access is not a reason to freeze useful work, but desktop/IWER evidence must never be promoted to physical-hardware ergonomics evidence.
 
 ## Product loop
 
@@ -37,42 +37,52 @@ Visible physical environment surfaces and fixed runtime colliders must derive fr
 
 ## VR-first interaction boundary
 
-The final product target is VR. Desktop authoring exists to make iteration/testability possible without a headset, not to define the eventual interaction model.
+The final product target is VR. Desktop authoring exists to make iteration, discovery and validation possible without a headset; it does not define the eventual embodied interaction model.
 
 - XR head pose is authority for the user's viewpoint and must not be automatically driven by gameplay;
 - desktop camera follow/focus may exist only as an observation aid;
 - immersive XR must offer a complete basic loop without depending on invisible desktop HTML controls;
-- controller trigger is appropriate for indirect/spatial UI selection; grip/squeeze is the primary direct construction/manipulation gesture;
-- spatial controls and desktop controls must invoke the same semantic authored commands;
-- component interaction proxies, selection halos, handles and placement ghosts are presentation/input projections only.
+- controller trigger is appropriate for indirect/spatial UI selection; grip/squeeze is the current primary direct construction/manipulation gesture;
+- spatial controls and desktop controls should converge on the same semantic authored commands where the semantics genuinely match;
+- component interaction proxies, selection halos, handles and placement ghosts are presentation/input projections only;
+- a desktop interaction experiment must not be copied into XR merely for parity.
 
 ### Transient input ownership
 
-Desktop and XR may share semantic commands, but must not concurrently own the same transient drag/preview state.
+Desktop and XR may share semantic commands, but transient gestures have explicit authority.
+
+Durable rule:
+
+> A transient gesture belongs to the interaction context in which it began. If that context changes materially, the gesture is cancelled; it is never carried forward and committed in the new context.
+
+Therefore:
 
 - outside immersive XR, desktop canvas input owns desktop pointer captures, ghosts and component previews;
 - session entry cancels unfinished desktop gestures before XR takes ownership;
-- while XR is presenting, desktop canvas adapters must be inert with respect to XR-owned transient state;
+- while XR is presenting, desktop canvas adapters are inert with respect to XR-owned transient state;
 - outside immersive XR, XR per-frame authoring logic must not clear or rewrite desktop transient state;
 - session end/disconnect clears outgoing XR transient state without allowing late XR events to mutate restored desktop interaction state;
+- BUILD/RUN changes, tool/context changes, destructive edits and equivalent authority transitions cancel incompatible in-flight direct gestures rather than reviving them later;
+- workspace grab has exclusive authority over workspace translation while active and must not leave older direct drags alive underneath it;
 - `pointercancel` and session handoff are cancellation boundaries, never implicit authored commits;
 - synchronized interaction geometry must be pick-ready without relying on an unrelated render frame.
 
-Do not generalize this narrow ownership contract into a broad multi-input framework without evidence. HTML/keyboard availability during XR is a product/UX decision, not implied by the transient-state rule above.
+Do not generalize this bounded authority contract into a broad multi-input framework without evidence. In particular, simultaneous two-hand construction remains an open interaction-grammar question; do not silently outlaw or canonize it merely to simplify implementation.
 
-## Testing without a headset
+## Evidence while no headset is available
 
-Every substantial capability should be separated into the strongest available evidence layer:
+Use the strongest appropriate layer rather than waiting for hardware:
 
-- pure/core test for document semantics and compilation;
-- headless/runtime test for physics behavior;
-- production build verification;
-- desktop browser interaction/readability using real browser input;
-- IWER emulation for real WebXR lifecycle/controller event paths;
-- Owner interaction smoke for human comprehensibility and feel;
-- physical Quest evidence for presence, ergonomics, tracking feel and final XR acceptance.
+- pure/core tests for authored semantics, geometry and compilation;
+- headless/runtime tests for physical consequences;
+- production build/fingerprint verification;
+- desktop browser input for real mouse interaction and Owner feel;
+- adversarial/model-based tests for cancellation, ordering, stale state and competing intents;
+- IWER for real WebXR lifecycle/controller event paths and coordinate/transform contracts;
+- Owner desktop smoke for human comprehensibility where desktop can answer the question;
+- physical Quest evidence later for presence, reach, comfort, tracking feel, controller targeting, device performance and final embodied acceptance.
 
-Do not describe desktop/IWER evidence as physical Quest proof. Do not describe deterministic browser choreography as proof that interaction feels good to a human.
+IWER may deliberately place controllers at ideal poses; that makes it strong event/transform evidence and weak ergonomics evidence. Never describe deterministic browser choreography as proof that interaction feels good to a human.
 
 GitHub Verify and Cloudflare deployment are separate gates. A GREEN GitHub branch does not prove that a previously established Cloudflare preview currently serves that branch head.
 
@@ -123,6 +133,8 @@ For existing beams, the current part-first surface uses contextual end operation
 
 Structural authored commands operate on part identity plus physical end semantics, not exposed node IDs.
 
+The desktop whole-welded-island beam-body drag remains a bounded interaction experiment. It is evidence about direct part/rigid-fragment intent, not an accepted XR gesture or permanent ontology.
+
 ## Extensibility boundary
 
 R0 mechanics are intentionally concrete. Do not accidentally promote today's narrow implementation into the permanent ontology of Riftworks.
@@ -140,9 +152,9 @@ These are negative constraints, not a predesigned future joint/assembly schema. 
 
 A mechanism is not accepted because it animates correctly. Prefer tests that demonstrate solver-level consequences: relative joint motion, contact-driven translation, load response or other physical effects. Presentation must read runtime body poses rather than recreate motion independently.
 
-Visual language should reveal useful mechanical intent before RUN where practical: attachment point, axis, motor direction, selection/snap state and authored-vs-evaluated distinction. Do not use graphics merely as decoration when the same budget can improve causal readability.
+Visual language should reveal useful mechanical intent before RUN where practical: attachment point, axis, motor direction, selection/snap state, rigid-fragment scope and authored-vs-evaluated distinction. Causal interaction feedback is part of construction readability when evidence says it is needed; it is not merely decorative polish.
 
-During R0, however, visual/haptic/audio polish remains blocked until the foundation survives Owner interaction smoke without a material world/mechanics/creation finding. Do not let polish resume through gradual scope drift.
+Decorative visual/audio/haptic polish remains secondary while construction grammar and foundation questions are still active.
 
 ## Donors
 
@@ -150,13 +162,15 @@ WebXR-Lab history, VAW, NextGen JV, JES, JURE and ANVIL are donors of evidence a
 
 ## Current R0 gate
 
-Automated browser/runtime evidence is currently strong enough to justify Owner smoke, not merge or polish.
+The branch is mechanically strong enough for continued construction-grammar discovery through desktop/internal evidence. It is not yet merge-authorized.
 
-Before R0 can replace the old checkpoint on `main`, require:
+Before R0 replaces the old checkpoint on `main`, require a conscious decision based on:
 
-- Owner free-form interaction evidence;
-- confirmation that the original world/wheel failure classes remain absent in normal use;
-- physical Quest evidence for reach, comfort, controller targeting and device behavior;
-- fresh verification that the deployment used for Owner testing serves the intended branch/runtime.
+- Owner free-form interaction evidence on the current construction surface;
+- confirmation that original world/wheel/creation failure classes remain absent in normal use;
+- fresh deployment attribution for any Owner-tested runtime;
+- physical Quest evidence for reach, comfort, controller targeting and device behavior once hardware is available, unless the Owner explicitly reclassifies the merge gate later.
+
+Physical Quest access is currently deferred/unknown. This must not freeze useful desktop/internal R&D, and no automation result should pretend to close the missing hardware evidence.
 
 Keep draft PR #2 unmerged until those evidence gaps are consciously resolved.
