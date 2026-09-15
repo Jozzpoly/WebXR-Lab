@@ -223,7 +223,20 @@ async function main() {
     const rehearsalDeadline = Date.now() + 35_000;
     let result = null;
     while (Date.now() < rehearsalDeadline) {
-      result = await client.evaluate('window.__riftworksXrRehearsal ?? null');
+      result = await client.evaluate(`(() => {
+        if (window.__riftworksXrRehearsal) return window.__riftworksXrRehearsal;
+        const text = document.body.innerText;
+        const pass = text.match(/XR rehearsal PASS · (\\d+)\\/(\\d+): ([^\\n]+)/);
+        if (pass) {
+          const names = pass[3].split(' → ').map((name) => name.trim()).filter(Boolean);
+          return { pass: true, stages: names.map((name) => ({ name, pass: true })), source: 'report' };
+        }
+        const fail = text.match(/XR rehearsal FAIL after (\\d+) PASS(?: at ([^:]+))?: ([^\\n]+)/);
+        if (fail) {
+          return { pass: false, stages: [], phase: fail[2] ?? null, error: fail[3], source: 'report' };
+        }
+        return null;
+      })()`);
       if (result) break;
       await wait(250);
     }
@@ -241,7 +254,7 @@ async function main() {
       throw new Error(`IWER rehearsal FAIL after ${result.stages?.length ?? 0} stages: ${result.error ?? 'unknown error'}`);
     }
 
-    console.log(`IWER browser rehearsal PASS · ${result.stages.length}/${result.stages.length}`);
+    console.log(`IWER browser rehearsal PASS · ${result.stages.length}/${result.stages.length}${result.source ? ` · ${result.source}` : ''}`);
     console.log(result.stages.map((stage) => stage.name).join(' -> '));
   } catch (error) {
     if (viteStderr.trim()) console.error(`\n[vite stderr]\n${viteStderr.slice(-4000)}`);
