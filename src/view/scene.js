@@ -231,22 +231,22 @@ export class RiftworksScene {
   }
 
   worldToWorkspacePoint(worldPoint, target = new THREE.Vector3()) {
-    this.workspaceRoot.updateMatrixWorld(true);
+    this.workspaceRoot.updateWorldMatrix(true, false);
     return this.workspaceRoot.worldToLocal(target.copy(worldPoint));
   }
 
   workspaceToWorldPoint(localPoint, target = new THREE.Vector3()) {
-    this.workspaceRoot.updateMatrixWorld(true);
+    this.workspaceRoot.updateWorldMatrix(true, false);
     return this.workspaceRoot.localToWorld(target.copy(localPoint));
   }
 
   worldToMachinePoint(worldPoint, target = new THREE.Vector3()) {
-    this.machineAuthoringRoot.updateMatrixWorld(true);
+    this.machineAuthoringRoot.updateWorldMatrix(true, false);
     return this.machineAuthoringRoot.worldToLocal(target.copy(worldPoint));
   }
 
   machineToWorldPoint(machinePoint, target = new THREE.Vector3()) {
-    this.machineAuthoringRoot.updateMatrixWorld(true);
+    this.machineAuthoringRoot.updateWorldMatrix(true, false);
     return this.machineAuthoringRoot.localToWorld(target.copy(machinePoint));
   }
 
