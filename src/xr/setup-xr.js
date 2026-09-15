@@ -76,6 +76,8 @@ export function setupXrConstruction({
   };
 
   view.renderer.xr.addEventListener('sessionstart', () => {
+    clearPoweredWheelPreview();
+    view.hideGhost();
     desktopPosition.copy(view.camera.position);
     desktopQuaternion.copy(view.camera.quaternion);
     desktopTarget.copy(view.controls.target);
@@ -354,7 +356,13 @@ export function setupXrConstruction({
       return view.machineToWorldPoint(machinePoint, target);
     },
     update() {
-      workspaceHandle.group.visible = view.renderer.xr.isPresenting && isBuildMode();
+      const xrPresenting = view.renderer.xr.isPresenting;
+      workspaceHandle.group.visible = xrPresenting && isBuildMode();
+      if (!xrPresenting) {
+        view.spatialPanel.setHover(null);
+        return;
+      }
+
       if (!isBuildMode()) {
         if (workspaceGrabHand !== null) releaseWorkspace();
         for (const hand of hands) clearComponentDrag(hand.state);
