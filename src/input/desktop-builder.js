@@ -201,9 +201,8 @@ export function attachDesktopBuilder({
     if (authoredHit?.kind === 'component') return;
 
     if (authoredHit?.kind === 'beam') {
-      const directDrag = getTool() === 'beam';
       selectBeam(authoredHit.beamId);
-      if (directDrag) beginIslandDrag(authoredHit, event);
+      beginIslandDrag(authoredHit, event);
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
