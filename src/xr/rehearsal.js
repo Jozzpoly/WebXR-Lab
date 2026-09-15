@@ -119,19 +119,20 @@ export function installIwerRehearsal({
     requireState(target, `spatial action ${action} is not currently available`);
     return target;
   };
-  const toWorld = (local) => view.workspaceToWorldPoint(new THREE.Vector3(...local), new THREE.Vector3());
+  const workspaceToWorld = (local) => view.workspaceToWorldPoint(new THREE.Vector3(...local), new THREE.Vector3());
+  const machineToWorld = (local) => view.machineToWorldPoint(new THREE.Vector3(...local), new THREE.Vector3());
   const rayOrigin = new THREE.Vector3(0.28, 1.38, -0.12);
 
-  const selectBeamByVisiblePoint = async (beamId, fraction, originLocal, label) => {
+  const selectBeamByVisiblePoint = async (beamId, fraction, originWorkspace, label) => {
     const a = beamEndPosition(getDocument(), beamId, 'a');
     const b = beamEndPosition(getDocument(), beamId, 'b');
     requireState(a && b, `${label}: beam endpoints unavailable`);
-    const point = toWorld([
+    const point = machineToWorld([
       a[0] + (b[0] - a[0]) * fraction,
       a[1] + (b[1] - a[1]) * fraction,
       a[2] + (b[2] - a[2]) * fraction,
     ]);
-    const origin = toWorld(originLocal);
+    const origin = workspaceToWorld(originWorkspace);
     await setPose(view, device, controller, origin, point, `${label}: aim`);
     await pulse(view, device, controller, TRIGGER, `${label}: select`);
     requireState(getSelectedBeamId() === beamId, `${label}: real beam could not be selected from a visible surface`);
@@ -156,12 +157,15 @@ export function installIwerRehearsal({
       requireState(getDocument().nodes.length === 0, 'blank workshop must not hide starter topology');
       mark('blank-workshop');
 
-      const firstStart = toWorld([-0.36, 0.45, 0]);
-      const firstEnd = toWorld([0.36, 0.45, 0]);
+      const firstStart = machineToWorld([-0.36, 0, 0]);
+      const firstEnd = machineToWorld([0.36, 0, 0]);
       await dragGrip(view, device, controller, firstStart, firstEnd, 'first-beam-create');
       requireState(getDocument().beams.length === 1, 'blank-space grip drag did not author the first beam');
       requireState(getDocument().nodes.length === 2, 'first beam should own exactly two internal endpoints');
+      requireState(getDocument().nodes.every((node) => Math.abs(node.position[1]) < 1e-6),
+        'XR workbench presentation height leaked into authored machine-local Y');
       const seed = getDocument().beams[0];
+      mark('machine-local-authority');
       mark('beam-create');
 
       await selectBeamByVisiblePoint(seed.id, 0.5, [0.75, 0.72, 0.45], 'seed-beam');
@@ -172,7 +176,7 @@ export function installIwerRehearsal({
       const extendHandle = { kind: 'extend', beamId: seed.id, end: 'b' };
       const extendFrom = xrConstruction.getBeamHandleWorldPosition(extendHandle, new THREE.Vector3());
       requireState(extendFrom, 'extend handle world pose missing');
-      const extendTo = toWorld([b[0], b[1], b[2] - 0.45]);
+      const extendTo = machineToWorld([b[0], b[1], b[2] - 0.45]);
       await dragGrip(view, device, controller, extendFrom, extendTo, 'beam-extend');
       requireState(getDocument().beams.length === 2, 'EXTEND handle did not author a second structural beam');
       mark('beam-extend');
@@ -185,8 +189,8 @@ export function installIwerRehearsal({
       const moveHandle = { kind: 'move', beamId: extension.id, end: 'b' };
       const moveFrom = xrConstruction.getBeamHandleWorldPosition(moveHandle, new THREE.Vector3());
       requireState(moveFrom, 'move handle world pose missing');
-      const movedTargetLocal = [extensionB[0] + 0.18, extensionB[1], extensionB[2] - 0.12];
-      await dragGrip(view, device, controller, moveFrom, toWorld(movedTargetLocal), 'beam-reshape');
+      const movedTargetMachine = [extensionB[0] + 0.18, extensionB[1], extensionB[2] - 0.12];
+      await dragGrip(view, device, controller, moveFrom, machineToWorld(movedTargetMachine), 'beam-reshape');
       const movedEnd = beamEndPosition(getDocument(), extension.id, 'b');
       requireState(Math.hypot(movedEnd[0] - extensionB[0], movedEnd[1] - extensionB[1], movedEnd[2] - extensionB[2]) > 0.1,
         'MOVE handle did not materially reshape the structural part');
@@ -204,12 +208,12 @@ export function installIwerRehearsal({
 
       const seedAfterEditA = beamEndPosition(getDocument(), seed.id, 'a');
       const seedAfterEditB = beamEndPosition(getDocument(), seed.id, 'b');
-      const wheelProbeLocal = [
+      const wheelProbeMachine = [
         (seedAfterEditA[0] + seedAfterEditB[0]) * 0.5,
         (seedAfterEditA[1] + seedAfterEditB[1]) * 0.5,
         (seedAfterEditA[2] + seedAfterEditB[2]) * 0.5 + 0.1,
       ];
-      const wheelProbe = toWorld(wheelProbeLocal);
+      const wheelProbe = machineToWorld(wheelProbeMachine);
       await setPose(view, device, controller, wheelProbe, null, 'wheel-probe');
       await xrFrames(view, 4, 'wheel-preview');
       requireState(componentLayer.hasPreview(), 'beam-surface proximity did not produce wheel preview');
@@ -230,7 +234,7 @@ export function installIwerRehearsal({
       const beforeRehost = structuredClone(getDocument().components.find((component) => component.id === wheelId));
       const rehostA = beamEndPosition(getDocument(), extension.id, 'a');
       const rehostB = beamEndPosition(getDocument(), extension.id, 'b');
-      const rehostTarget = toWorld([
+      const rehostTarget = machineToWorld([
         (rehostA[0] + rehostB[0]) * 0.5,
         (rehostA[1] + rehostB[1]) * 0.5 + 0.13,
         (rehostA[2] + rehostB[2]) * 0.5,

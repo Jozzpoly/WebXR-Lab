@@ -45,10 +45,10 @@ test('Rapier RUN settles on the shared visible room floor without mutating autho
 
 test('XR rehearsal machine can enter and advance Rapier RUN without corrupting authored truth', async () => {
   let document = createSingleBeamMachine();
-  document = extendFromBeamEnd(document, 'b1', 'b', [0.4, 0.45, -0.45]);
-  document = moveBeamEnd(document, 'b2', 'b', [0.58, 0.45, -0.57]);
+  document = extendFromBeamEnd(document, 'b1', 'b', [0.4, 0, -0.45]);
+  document = moveBeamEnd(document, 'b2', 'b', [0.58, 0, -0.57]);
 
-  const candidate = proposePoweredWheelPlacementNearPoint(document, [0, 0.45, 0.1]);
+  const candidate = proposePoweredWheelPlacementNearPoint(document, [0, 0, 0.1]);
   assert.ok(candidate, 'rehearsal wheel probe should resolve a real host-beam face');
   document = attachPoweredWheel(document, candidate.hostBeamId, {
     mount: candidate.mount,

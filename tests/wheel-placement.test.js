@@ -34,15 +34,15 @@ test('mirrored beam faces produce explicit mirrored axle and motor signs', () =>
 test('unrelated topology cannot affect a host-beam surface proposal', () => {
   const baseline = proposePoweredWheelPlacement(createSingleBeamMachine(), 'b1', [0.1, 0, -0.06], [0, 0, -1]);
   let document = createSingleBeamMachine();
-  document = extendFromBeamEnd(document, 'b1', 'b', [3.5, 0.45, -2.8]);
-  document = extendFromBeamEnd(document, 'b2', 'b', [5.2, 0.45, 1.7]);
+  document = extendFromBeamEnd(document, 'b1', 'b', [3.5, 0, -2.8]);
+  document = extendFromBeamEnd(document, 'b2', 'b', [5.2, 0, 1.7]);
   const changed = proposePoweredWheelPlacement(document, 'b1', [0.1, 0, -0.06], [0, 0, -1]);
   assert.deepEqual(changed, baseline);
 });
 
-test('grip proximity resolves the nearest real beam surface instead of a global centroid', () => {
+test('grip proximity resolves the nearest real beam surface in machine-local space', () => {
   const document = createSingleBeamMachine();
-  const candidate = proposePoweredWheelPlacementNearPoint(document, [0.22, 0.45, 0.11], { maxDistance: 0.2 });
+  const candidate = proposePoweredWheelPlacementNearPoint(document, [0.22, 0, 0.11], { maxDistance: 0.2 });
 
   assert.ok(candidate);
   assert.equal(candidate.hostBeamId, 'b1');
