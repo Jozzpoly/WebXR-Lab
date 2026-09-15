@@ -41,20 +41,33 @@ function machinePointToScreen(view, point) {
   };
 }
 
+const wheel = {
+  id: 'c1',
+  kind: 'powered-wheel',
+  center: [0.08, 0, -0.04],
+  colliderRotation: [0, 0, 0, 1],
+  radius: 0.26,
+  width: 0.12,
+  motorVelocity: 8,
+};
+
 test('wheel preview center is a stable pointer target without waiting for a render frame', () => {
   const view = makeView();
   const layer = new ComponentInteractionLayer(view);
-  const preview = {
-    center: [0.08, 0, -0.04],
-    colliderRotation: [0, 0, 0, 1],
-    radius: 0.26,
-    width: 0.12,
-    motorVelocity: 8,
-  };
 
-  layer.showPreview(preview);
-  const screen = machinePointToScreen(view, preview.center);
+  layer.showPreview(wheel);
+  const screen = machinePointToScreen(view, wheel.center);
 
   assert.equal(layer.hasPreview(), true);
   assert.equal(layer.pickPreviewPointer(screen.x, screen.y), true);
+});
+
+test('freshly synced authored component proxy is pointer-pickable without waiting for a render frame', () => {
+  const view = makeView();
+  const layer = new ComponentInteractionLayer(view);
+
+  layer.sync({ components: [wheel] });
+  const screen = machinePointToScreen(view, wheel.center);
+
+  assert.equal(layer.pickPointerHit(screen.x, screen.y)?.componentId, wheel.id);
 });
