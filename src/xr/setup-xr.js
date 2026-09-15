@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { MIN_BEAM_LENGTH } from '../core/machine-document.js';
+import { beamEndPosition, nearestBeamEnd, nearestBeamSurface } from '../input/structural-placement.js';
 import { proposePoweredWheelPlacementNearPoint } from '../input/wheel-placement.js';
 import { beginWorkspaceTranslation, updateWorkspaceTranslation } from '../input/workspace-translation.js';
 import { WorkspaceGrabHandle } from '../view/workspace-handle.js';
@@ -15,14 +17,19 @@ const gripMaterial = new THREE.MeshStandardMaterial({ color: 0x243849, roughness
 export function setupXrConstruction({
   view,
   componentLayer,
+  structuralLayer,
   getDocument,
   isBuildMode,
   getTool,
   getSelectedComponentId,
-  commitExtend,
+  getSelectedBeamId,
+  commitMoveBeamEnd,
+  commitExtendBeamEnd,
   commitPoweredWheel,
   previewPoweredWheel,
   clearPoweredWheelPreview,
+  selectBeam,
+  clearBeamSelection,
   selectComponent,
   editSelectedWheel,
   selectTool,
@@ -48,6 +55,13 @@ export function setupXrConstruction({
     workspaceHandle.setActive(false);
   };
 
+  const clearStructuralDrag = (state) => {
+    state.structuralDrag = null;
+    state.lastPoint = null;
+    state.targetBeamEnd = null;
+    view.hideGhost();
+  };
+
   view.renderer.xr.addEventListener('sessionstart', () => {
     desktopPosition.copy(view.camera.position);
     desktopQuaternion.copy(view.camera.quaternion);
@@ -61,6 +75,7 @@ export function setupXrConstruction({
   view.renderer.xr.addEventListener('sessionend', () => {
     releaseWorkspace();
     clearPoweredWheelPreview();
+    for (const hand of hands) clearStructuralDrag(hand.state);
     workspaceDelta.copy(view.workspaceRoot.position).sub(workspaceAtSessionStart);
     view.camera.position.copy(desktopPosition).add(workspaceDelta);
     view.camera.quaternion.copy(desktopQuaternion);
@@ -73,6 +88,39 @@ export function setupXrConstruction({
 
   const hands = [];
 
+  const updateStructuralDrag = (hand) => {
+    const drag = hand.state.structuralDrag;
+    if (!drag) return;
+
+    hand.grip.updateWorldMatrix(true, false);
+    hand.grip.getWorldPosition(hand.worldPoint);
+    view.worldToWorkspacePoint(hand.worldPoint, hand.localPoint);
+
+    const doc = getDocument();
+    const start = beamEndPosition(doc, drag.beamId, drag.end);
+    const opposite = beamEndPosition(doc, drag.beamId, drag.end === 'a' ? 'b' : 'a');
+    if (!start || !opposite) return;
+
+    hand.state.targetBeamEnd = null;
+    let end = hand.localPoint.toArray();
+    if (drag.kind === 'extend') {
+      const target = nearestBeamEnd(doc, end, 0.18, { beamId: drag.beamId, end: drag.end });
+      if (target) {
+        hand.state.targetBeamEnd = { beamId: target.beamId, end: target.end };
+        end = target.position;
+      }
+    }
+
+    const previewStart = drag.kind === 'move' ? opposite : start;
+    const length = Math.hypot(
+      end[0] - previewStart[0],
+      end[1] - previewStart[1],
+      end[2] - previewStart[2],
+    );
+    hand.state.lastPoint = [...end];
+    view.showGhost(previewStart, end, length >= MIN_BEAM_LENGTH);
+  };
+
   for (let index = 0; index < 2; index += 1) {
     const controller = view.renderer.xr.getController(index);
     const grip = view.renderer.xr.getControllerGrip(index);
@@ -84,7 +132,7 @@ export function setupXrConstruction({
     grip.visible = false;
     view.scene.add(controller, grip);
 
-    const state = { startId: null };
+    const state = { structuralDrag: null, lastPoint: null, targetBeamEnd: null };
     const worldPoint = new THREE.Vector3();
     const localPoint = new THREE.Vector3();
 
@@ -95,10 +143,9 @@ export function setupXrConstruction({
     controller.addEventListener('disconnected', () => {
       controller.visible = false;
       grip.visible = false;
-      state.startId = null;
+      clearStructuralDrag(state);
       if (workspaceGrabHand === index) releaseWorkspace();
       clearPoweredWheelPreview();
-      view.hideGhost();
     });
 
     controller.addEventListener('selectstart', () => {
@@ -114,7 +161,15 @@ export function setupXrConstruction({
 
       if (!isBuildMode()) return;
       const componentId = componentLayer.pickController(controller);
-      if (componentId) selectComponent(componentId);
+      if (componentId) {
+        selectComponent(componentId);
+        return;
+      }
+
+      if (getTool() === 'beam') {
+        const surface = view.pickBeamSurfaceController(controller);
+        if (surface?.beamId) selectBeam(surface.beamId);
+      }
     });
 
     controller.addEventListener('squeezestart', () => {
@@ -125,9 +180,8 @@ export function setupXrConstruction({
         workspaceGrabHand = index;
         workspaceDrag = beginWorkspaceTranslation(view.workspaceRoot.position.toArray(), worldPoint.toArray());
         workspaceHandle.setActive(true);
-        state.startId = null;
+        clearStructuralDrag(state);
         clearPoweredWheelPreview();
-        view.hideGhost();
         return;
       }
 
@@ -136,7 +190,7 @@ export function setupXrConstruction({
 
       const componentId = componentLayer.nearest(localPoint, 0.24);
       if (componentId) {
-        state.startId = null;
+        clearStructuralDrag(state);
         clearPoweredWheelPreview();
         selectComponent(componentId);
         return;
@@ -148,14 +202,23 @@ export function setupXrConstruction({
         if (!candidate) return;
         clearPoweredWheelPreview();
         commitPoweredWheel(candidate);
-        state.startId = null;
         return;
       }
 
       if (getTool() !== 'beam') return;
-      const nodeId = view.nearestNode(getDocument(), localPoint, 0.18);
-      if (!nodeId) return;
-      state.startId = nodeId;
+
+      const handle = structuralLayer.nearest(localPoint, 0.14);
+      if (handle) {
+        state.structuralDrag = handle;
+        state.lastPoint = null;
+        state.targetBeamEnd = null;
+        clearPoweredWheelPreview();
+        updateStructuralDrag({ grip, state, worldPoint, localPoint });
+        return;
+      }
+
+      const nearSurface = nearestBeamSurface(getDocument(), localPoint.toArray(), 0.18);
+      if (nearSurface?.beamId) selectBeam(nearSurface.beamId);
     });
 
     controller.addEventListener('squeezeend', () => {
@@ -163,18 +226,19 @@ export function setupXrConstruction({
         releaseWorkspace();
         return;
       }
-      if (workspaceGrabHand !== null || getTool() !== 'beam' || !state.startId || !isBuildMode()) return;
-      grip.updateWorldMatrix(true, false);
-      grip.getWorldPosition(worldPoint);
-      view.worldToWorkspacePoint(worldPoint, localPoint);
-      const doc = getDocument();
-      const targetId = view.nearestNode(doc, localPoint, 0.18, state.startId);
-      const end = targetId
-        ? doc.nodes.find((node) => node.id === targetId).position
-        : localPoint.toArray();
-      commitExtend(state.startId, end, targetId);
-      state.startId = null;
-      view.hideGhost();
+      if (workspaceGrabHand !== null || !state.structuralDrag || !isBuildMode()) return;
+
+      updateStructuralDrag({ grip, state, worldPoint, localPoint });
+      const drag = state.structuralDrag;
+      const point = state.lastPoint;
+      if (point) {
+        if (drag.kind === 'move') {
+          commitMoveBeamEnd(drag.beamId, drag.end, point);
+        } else {
+          commitExtendBeamEnd(drag.beamId, drag.end, point, state.targetBeamEnd);
+        }
+      }
+      clearStructuralDrag(state);
     });
 
     hands.push({ controller, grip, state, worldPoint, localPoint });
@@ -189,6 +253,11 @@ export function setupXrConstruction({
       workspaceHandle.group.updateWorldMatrix(true, false);
       return target.setFromMatrixPosition(workspaceHandle.group.matrixWorld);
     },
+    getBeamHandleWorldPosition(handle, target = new THREE.Vector3()) {
+      const local = structuralLayer.getHandleLocalPosition(handle, target);
+      if (!local) return null;
+      return view.workspaceToWorldPoint(local, target);
+    },
     update() {
       if (workspaceGrabHand !== null && workspaceDrag) {
         clearPoweredWheelPreview();
@@ -200,19 +269,13 @@ export function setupXrConstruction({
         view.workspaceRoot.updateMatrixWorld(true);
       } else if (isBuildMode() && getTool() === 'beam') {
         clearPoweredWheelPreview();
+        let dragging = false;
         for (const hand of hands) {
-          if (!hand.state.startId) continue;
-          hand.grip.updateWorldMatrix(true, false);
-          hand.grip.getWorldPosition(hand.worldPoint);
-          view.worldToWorkspacePoint(hand.worldPoint, hand.localPoint);
-          const doc = getDocument();
-          const targetId = view.nearestNode(doc, hand.localPoint, 0.18, hand.state.startId);
-          const end = targetId
-            ? doc.nodes.find((node) => node.id === targetId).position
-            : hand.localPoint.toArray();
-          const start = doc.nodes.find((node) => node.id === hand.state.startId)?.position;
-          if (start) view.showGhost(start, end, true);
+          if (!hand.state.structuralDrag) continue;
+          dragging = true;
+          updateStructuralDrag(hand);
         }
+        if (!dragging && !getSelectedBeamId()) view.hideGhost();
       } else if (isBuildMode() && getTool() === 'powered-wheel' && !getSelectedComponentId()) {
         let previewCandidate = null;
         for (const hand of hands) {
