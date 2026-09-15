@@ -7,6 +7,7 @@ export const RUNTIME_INPUT_PATHS = [
   'src',
   'index.html',
   'package.json',
+  'package-lock.json',
   'wrangler.jsonc',
   'vite.config.js',
   'scripts/runtime-build-id.mjs',
