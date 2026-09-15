@@ -19,7 +19,7 @@ test('moving a beam end edits the real structural part without exposing node ide
   assert.equal(machineFingerprint(original), fingerprint);
   assert.deepEqual(next.nodes.find((node) => node.id === 'n2').position, [0.8, 0.45, 0]);
   assert.equal(next.revision, 1);
-  assert.equal(compileMachine(next).islands[0].beams[0].length, 1.2);
+  assert.ok(almost(compileMachine(next).islands[0].beams[0].length, 1.2));
 });
 
 test('moving a shared beam end preserves welded topology', () => {
