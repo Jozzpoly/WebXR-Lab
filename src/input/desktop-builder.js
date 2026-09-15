@@ -7,6 +7,11 @@ import { beamEndPosition, nearestBeamEnd } from './structural-placement.js';
 
 const DIRECT_ISLAND_DRAG_THRESHOLD_PX = 6;
 
+function changesDesktopAuthoringContext(event) {
+  if ((event.ctrlKey || event.metaKey) && String(event.key ?? '').toLowerCase() === 'z') return true;
+  return ['Space', 'Escape', 'Delete', 'Backspace', 'Digit1', 'Digit2'].includes(event.code);
+}
+
 export function attachDesktopBuilder({
   view,
   structuralLayer,
@@ -270,6 +275,9 @@ export function attachDesktopBuilder({
   const onPointerCancel = (event) => finish(event, true);
   const onContextMenu = (event) => event.preventDefault();
   const onXrSessionStart = () => clearState();
+  const onKeyDown = (event) => {
+    if (isDesktopActive() && state.operation && changesDesktopAuthoringContext(event)) clearState();
+  };
 
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', updateDrag);
@@ -277,6 +285,7 @@ export function attachDesktopBuilder({
   canvas.addEventListener('pointercancel', onPointerCancel);
   canvas.addEventListener('contextmenu', onContextMenu);
   view.renderer.xr.addEventListener('sessionstart', onXrSessionStart);
+  if (typeof window !== 'undefined') window.addEventListener('keydown', onKeyDown);
 
   return () => {
     clearState();
@@ -286,5 +295,6 @@ export function attachDesktopBuilder({
     canvas.removeEventListener('pointercancel', onPointerCancel);
     canvas.removeEventListener('contextmenu', onContextMenu);
     view.renderer.xr.removeEventListener('sessionstart', onXrSessionStart);
+    if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeyDown);
   };
 }
