@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { MIN_BEAM_LENGTH } from '../core/machine-document.js';
 import { beamEndPosition, nearestBeamEnd, nearestBeamSurface } from '../input/structural-placement.js';
+import { pickNearestAuthoredController } from '../input/authored-picking.js';
 import { proposePoweredWheelPlacementNearPoint } from '../input/wheel-placement.js';
 import { beginWorkspaceTranslation, updateWorkspaceTranslation } from '../input/workspace-translation.js';
 import { WorkspaceGrabHandle } from '../view/workspace-handle.js';
@@ -183,16 +184,17 @@ export function setupXrConstruction({
       }
 
       if (!isBuildMode()) return;
-      const componentId = componentLayer.pickController(controller);
-      if (componentId) {
-        selectComponent(componentId);
+      const authoredHit = pickNearestAuthoredController(view, componentLayer, controller);
+      if (!authoredHit) return;
+
+      if (authoredHit.kind === 'component') {
+        selectTool('powered-wheel');
+        selectComponent(authoredHit.componentId);
         return;
       }
 
-      if (getTool() === 'beam') {
-        const surface = view.pickBeamSurfaceController(controller);
-        if (surface?.beamId) selectBeam(surface.beamId);
-      }
+      selectTool('beam');
+      selectBeam(authoredHit.beamId);
     });
 
     controller.addEventListener('squeezestart', () => {
@@ -215,6 +217,7 @@ export function setupXrConstruction({
       if (componentId) {
         clearStructuralDrag(state);
         clearPoweredWheelPreview();
+        selectTool('powered-wheel');
         selectComponent(componentId);
         return;
       }
@@ -256,6 +259,7 @@ export function setupXrConstruction({
 
       const nearSurface = nearestBeamSurface(getDocument(), localPoint.toArray(), 0.18);
       if (nearSurface?.beamId) {
+        selectTool('beam');
         selectBeam(nearSurface.beamId);
         return;
       }
