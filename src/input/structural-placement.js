@@ -1,3 +1,5 @@
+import { closestPointOnBeamSurface, getBeamFrame } from '../core/beam-frame.js';
+
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 export function beamEndPosition(document, beamId, end) {
@@ -29,5 +31,22 @@ export function nearestBeamEnd(document, point, radius = 0.16, excluded = null) 
     }
   }
 
+  return best;
+}
+
+export function nearestBeamSurface(document, point, maxDistance = 0.2) {
+  let best = null;
+  for (const beam of document.beams) {
+    const frame = getBeamFrame(document, beam.id);
+    const surface = closestPointOnBeamSurface(frame, point);
+    if (surface.distance > maxDistance || (best && surface.distance >= best.distance)) continue;
+    best = {
+      beamId: beam.id,
+      distance: surface.distance,
+      machinePosition: surface.machinePosition,
+      localPosition: surface.position,
+      localNormal: surface.normal,
+    };
+  }
   return best;
 }
