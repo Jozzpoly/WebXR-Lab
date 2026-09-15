@@ -133,6 +133,21 @@ Authored commands are shared. Transient input state is not concurrently owned.
 
 This contract is deliberately narrow. It does not yet declare that every HTML/keyboard command surface must be disabled during XR; that is a separate UX/product decision and should be driven by Owner evidence rather than inferred from this transient-state bug.
 
+## Current automated checkpoint
+
+Verified runtime checkpoint: `8095a2ab78cf2971781defa4d3b979af5d22d7bd`.
+
+GitHub `Verify Riftworks` run `34971117954` (#151):
+
+- Node contract/physics suite: **58/58 PASS**;
+- production build: **PASS**;
+- real desktop Chromium mouse rehearsal: **7/7 PASS**;
+- Chromium + IWER immersive controller rehearsal: **18/18 PASS**.
+
+This checkpoint includes executable contracts for desktop/XR transient ownership, true `pointercancel` semantics, session handoff cancellation, and immediate pick-readiness of synchronized component proxies and structural handles.
+
+Automated GREEN is not Owner or hardware acceptance. It only advances the evidence ladder to the human interaction gates below.
+
 ## Interaction direction after the core contracts are green
 
 The builder should move toward a real workshop loop:
