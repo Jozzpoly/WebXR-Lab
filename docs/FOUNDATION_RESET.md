@@ -26,13 +26,21 @@ This class of bug must become structurally impossible.
 
 ### 2. Wheel placement has no real mounting semantics
 
-A powered wheel currently attaches to a structural node and its axis is inferred from that node's position relative to the centroid of the whole structure. This does not represent the place or orientation at which the Owner actually mounted a wheel. The heuristic can be deterministic, testable and still semantically wrong.
+A powered wheel currently attaches to a structural node and its axis is inferred from that node's position relative to the centroid of the whole structure. This does not represent the place or orientation at which the Owner actually mounted a wheel. The heuristic can be deterministic, testable and still be semantically wrong.
 
 Centroid-based mounting inference is retired as an architectural direction.
 
 ### 3. The user is manipulating implementation topology
 
 The current document exposes nodes as universal construction sockets. Beams are edges between nodes and powered wheels attach to nodes. This was adequate for B0 proof but is not a sufficient workshop interaction model. A node graph may remain useful internally, but it must not define the entire user-facing grammar.
+
+### 4. Input adapters can interfere through shared transient state
+
+Desktop and XR can correctly converge into the same authored commands and still corrupt the interaction surface if inactive adapters keep touching shared ghosts, previews or drags.
+
+The desktop browser gate demonstrated a concrete failure: a valid mouse hover produced the correct wheel candidate, but the inactive XR per-frame adapter immediately cleared that preview because no XR grip candidate existed. The same inactive XR branch could hide a desktop structural ghost. The inverse boundary was also incomplete: desktop canvas gestures were still live during immersive XR, `pointercancel` could commit a structural drag, and late XR controller lifecycle events could touch restored desktop transient state.
+
+This is not authored-data corruption, but it is an authority failure at the input/presentation boundary. R0 now treats transient interaction ownership explicitly.
 
 ## R0 durable contracts
 
@@ -108,7 +116,22 @@ R0 acceptance requires tests for at least:
 - wheel mount orientation is stable under machine translation/rotation and unrelated geometry changes;
 - equivalent left/right wheel mounts produce coherent locomotion semantics;
 - RUN/STOP never mutates authored truth;
-- current B0 powered-cart causal motion remains demonstrable after the spatial rewrite.
+- current B0 powered-cart causal motion remains demonstrable after the spatial rewrite;
+- desktop and XR browser paths execute the same authored semantics through real interaction events.
+
+### H. One owner for transient interaction state
+
+Authored commands are shared. Transient input state is not concurrently owned.
+
+- outside immersive XR, desktop canvas adapters own desktop pointer captures, construction ghosts and component previews;
+- immersive XR session start cancels unfinished outgoing desktop drags/previews before XR takes ownership;
+- while XR is presenting, desktop canvas adapters are inert with respect to XR-owned transient state;
+- outside immersive XR, XR per-frame authoring logic is inert and cannot clear desktop previews/ghosts;
+- session end/disconnect clears outgoing XR transient state without allowing late XR events to mutate the restored desktop state;
+- `pointercancel` and session handoff are cancellation boundaries, never implicit authored commits;
+- interaction geometry must be pick-ready after synchronization rather than depending on an unrelated render frame.
+
+This contract is deliberately narrow. It does not yet declare that every HTML/keyboard command surface must be disabled during XR; that is a separate UX/product decision and should be driven by Owner evidence rather than inferred from this transient-state bug.
 
 ## Interaction direction after the core contracts are green
 
@@ -129,15 +152,21 @@ Do not add hinge, suspension, steering, thruster, richer materials, audio, visua
 
 Do not generalize mount frames into a universal ECS/constraint ontology until Beam + Powered Wheel produce a convincing build → run → observe → improve loop.
 
+Do not generalize the newly explicit input ownership boundary into a broad multi-user/input framework. Its current job is to keep desktop and immersive adapters from corrupting each other's ephemeral interaction state.
+
 Do not call IWER/desktop evidence physical-Quest ergonomics evidence.
 
 ## Evidence ladder for R0
 
-1. **RED contracts** — new tests expose the current spatial/mounting failures.
+1. **RED contracts** — tests/browser gates expose spatial, mounting or interaction-authority failures.
 2. **Core GREEN** — machine/world/mount semantics pass without browser presentation.
 3. **Runtime GREEN** — Rapier environment + spawn + wheel locomotion consequences pass.
-4. **Browser rehearsal** — desktop/IWER demonstrate the same contracts through real interaction paths.
-5. **Owner smoke** — free-form building no longer reproduces the reported classes of failure.
-6. **Only then:** resume visual/feedback work.
+4. **Desktop browser GREEN** — real mouse events execute the current blank-workshop part lifecycle through RUN/STOP.
+5. **IWER browser GREEN** — the immersive controller path executes the corresponding lifecycle and spatial contracts.
+6. **Owner smoke** — free-form building no longer reproduces the reported classes of failure and the interaction model is understandable without compensating around it.
+7. **Physical Quest evidence** — reach, comfort, target size and device-specific behavior survive real hardware.
+8. **Only then:** resume visual/feedback work.
+
+Automated desktop/IWER evidence is implementation evidence, not a substitute for human feel or physical ergonomics.
 
 Visual-feedback work is explicitly gated. When R0 reaches that point, the project status should announce it prominently rather than silently drifting into polish.
